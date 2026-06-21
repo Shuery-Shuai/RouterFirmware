@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text x=%2250%%22 y=%2250%%22 style=%22dominant-baseline:central;text-anchor:middle;font-size:90px;%22>⚙️</text></svg>"/>
+
+  <!-- 主题样式 -->
+  <link rel="stylesheet" href="/assets/web/styles/theme.css"/>
+  <link rel="stylesheet" href="/assets/web/styles/layout.css"/>
+  <link rel="stylesheet" href="/assets/web/styles/basic.css"/>
+  <link rel="stylesheet" href="/assets/web/styles/settings-modal.css"/>
+
+  <!-- GitHub Markdown 样式 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.1/github-markdown-light.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.1/github-markdown-dark.css" media="(prefers-color-scheme: dark)">
+
+  <!-- Highlight.js 代码高亮 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+
+  <!-- KaTeX 数学公式 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+
+  <!-- Markdown-it -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.0.0/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it-katex@2.0.3/dist/markdown-it-katex.min.js"></script>
+
+  <!-- Highlight.js -->
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/c.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/cpp.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/java.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/xml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/markdown.min.js"></script>
+
+  <!-- 自定义脚本 -->
+  <script src="/assets/web/scripts/theme.js"></script>
+  <script src="/assets/web/scripts/file-browser.js"></script>
+
+  <title>RouterFirmware - 文件浏览器</title>
+</head>
+<body>
+  <div class="container">
+    <h1>RouterFirmware 文件浏览器</h1>
+    <div id="breadcrumb" class="breadcrumb"></div>
+    <div class="search-box">
+      <input type="text" id="searchInput" class="search-input" placeholder="搜索文件或目录..." />
+      <div class="search-buttons">
+        <button id="searchCurrentBtn">搜索当前目录</button>
+        <button id="searchGlobalBtn">全局搜索</button>
+      </div>
+    </div>
+    <div id="searchInfo" class="search-info"></div>
+    <hr>
+    <div id="content">
+      <div class="loading">正在加载...</div>
+    </div>
+    <div id="readme" class="readme-container markdown-body" style="display: none;"></div>
+  </div>
+</body>
+</html>

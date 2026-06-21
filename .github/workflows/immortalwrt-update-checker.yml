@@ -1,0 +1,112 @@
+# =============================================================================
+# 工作流名称: ImmortalWrt Update Checker
+# 描述: 定期检查 ImmortalWrt 官方源码仓库的更新，当有新提交时，
+#       通过 repository_dispatch 事件触发 Router Firmware Builder 工作流。
+#
+# 触发条件:
+#   schedule:
+#     - 每 3 天 UTC 16:00 自动执行 (约北京时间次日 00:00)
+#   workflow_dispatch:
+#     - 手动触发，可选参数 "update" 设为 true 时强制触发构建，忽略缓存
+#
+# 环境变量:
+#   REPO_URL     - 上游源码仓库地址
+#   REPO_BRANCH  - 上游仓库分支
+#
+# 所需 Secrets:
+#   ACTIONS_TRIGGER_PAT - 具有 repo 权限的 Personal Access Token，
+#                          用于跨工作流触发 repository_dispatch 事件
+# =============================================================================
+
+name: ImmortalWrt Update Checker
+
+# ----------------------------- 全局环境变量 ----------------------------------
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: master
+
+# ----------------------------- 触发事件配置 ----------------------------------
+on:
+  schedule:
+    # 每 3 天 UTC 16:00 执行一次 (cron 使用 UTC 时间)
+    - cron: "0 16 */3 * *"
+  workflow_dispatch:
+    inputs:
+      update:
+        description: "强制触发构建 (设为 true 则忽略缓存)"
+        required: false
+        default: "false"
+
+# =============================================================================
+# Job: check
+# 职责: 获取上游最新 commit，与缓存比较，决定是否触发构建
+# =============================================================================
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5 # 本工作流仅检查更新，耗时极短
+    concurrency:
+      # 防止同一工作流同时运行多个实例
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 克隆上游仓库（浅克隆，仅获取最新 commit）
+      # -----------------------------------------------------------------------
+      - name: 获取上游最新 Commit
+        id: getHash
+        run: |
+          # 克隆到子目录，避免污染工作区根目录
+          git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" upstream || {
+            echo "克隆上游仓库失败，请检查 REPO_URL 和网络"
+            exit 1
+          }
+          cd upstream
+          echo "commitHash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "获取到上游 Commit: $(git rev-parse HEAD)"
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 使用缓存判断该 Commit 是否已被处理过
+      # 缓存 key 格式: HEAD-<commit_hash>
+      # 若命中缓存，说明之前已触发过构建，无需重复触发
+      # -----------------------------------------------------------------------
+      - name: 比较 Commit 缓存
+        id: cacheHash
+        uses: actions/cache@v5
+        with:
+          path: .commitHash # 缓存一个标记文件
+          key: HEAD-${{ steps.getHash.outputs.commitHash }}
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 如果是新的 Commit (缓存未命中)，保存哈希值供后续缓存
+      # -----------------------------------------------------------------------
+      - name: 保存新 Commit Hash
+        if: steps.cacheHash.outputs.cache-hit != 'true'
+        run: |
+          echo "${{ steps.getHash.outputs.commitHash }}" > .commitHash
+          echo "已记录新的 Commit Hash"
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 触发 Router Firmware Builder 工作流
+      # 条件: 缓存未命中 (有新提交) 或手动强制更新 (update == 'true')
+      # 通过 repository_dispatch 将固件参数传递给构建工作流
+      # -----------------------------------------------------------------------
+      - name: 触发构建工作流
+        if: steps.cacheHash.outputs.cache-hit != 'true' || github.event.inputs.update == 'true'
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: ImmortalWrt Source Code Update
+          client-payload: '{"firmware": "immortalwrt", "version": "snapshots", "profile": "bananapi_bpi-r4"}'
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 清理过旧的工作流运行记录，保持仓库整洁
+      # 保留最近 7 天且至少 7 条运行记录
+      # -----------------------------------------------------------------------
+      - name: 清理旧工作流运行
+        if: success() || failure() # 无论前面步骤成功与否都执行
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 7
+          keep_minimum_runs: 7

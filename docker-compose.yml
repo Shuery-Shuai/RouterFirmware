@@ -1,0 +1,95 @@
+# =============================================================================
+# Docker Compose 配置文件 —— ImmortalWrt / RTFW 编译环境
+# =============================================================================
+#
+# 用途：
+#   快速启动一个已安装完整编译依赖的容器，并将当前主机的 OpenWrt/ImmortalWrt
+#   源码目录挂载进容器，实现在容器内进行固件编译。
+#
+# 使用方式：
+#   1. 将本文件放置到源码根目录（与 .config、package、target 等平级）。
+#   2. 根据需要修改下方的 CPU、内存限制等参数（或通过 .env 文件覆盖）。
+#   3. 启动容器：
+#        docker compose up -d
+#   4. 进入容器（自动进入源码目录）：
+#        docker compose exec rtfw-builder-env bash
+#   5. 开始编译，例如：
+#        make menuconfig
+#        make -j$(nproc) V=s
+#
+# 注意事项：
+#   - 容器内默认为 root 用户（或镜像指定的非 root 用户），如遇权限问题，
+#     可尝试启用 privileged 模式或设置 FORCE_UNSAFE_CONFIGURE 环境变量。
+#   - 为加快源码下载，建议使用 network_mode: host。
+#   - 编译非常消耗资源，请务必根据宿主机配置合理限制 CPU 和内存。
+#
+# =============================================================================
+
+version: "3.8" # Docker Compose 文件版本（可省略，但便于兼容）
+
+services:
+  # 编译服务
+  rtfw-builder-env:
+    # ---------- 基础镜像 ----------
+    image: shuery/immortalwrt-build-env:latest # 预置编译依赖的镜像
+    container_name: rtfw-builder-env # 容器名称（便于管理）
+    platform: linux/amd64 # 指定 CPU 架构，确保在 Apple Silicon 等设备上也可运行
+
+    # ---------- 交互模式（对应 docker run -itd） ----------
+    stdin_open: true # 保持标准输入打开（-i）
+    tty: true # 分配一个伪终端（-t），使容器在后台持续运行，支持 attach/exec
+
+    # ---------- 卷挂载 ----------
+    volumes:
+      # 将当前宿主机目录（即本文件所在目录）挂载到容器内的工作目录
+      - .:/home/immortalwrt/workdir
+
+    # ---------- 工作目录 ----------
+    working_dir: /home/immortalwrt/workdir # 进入容器后的默认路径，即源码根目录
+
+    # ======================================================================
+    # 以下为推荐添加的增强配置，可根据实际情况注释/取消注释
+    # ======================================================================
+
+    # ---------- 重启策略 ----------
+    # 当容器异常退出（如编译进程崩溃或 Docker 服务重启）后自动重启，
+    # 除非你明确执行 docker compose stop / down。
+    restart: unless-stopped
+
+    # ---------- 资源限制 ----------
+    # 编译是 CPU 和内存密集型任务，限制资源可防止宿主机卡死。
+    # 你可以通过环境变量 CPUS 和 MEMORY 动态调整，例如：
+    #   CPUS=8 MEMORY=8g docker compose up -d
+    # 若不想限制，可将整个 deploy 段注释掉。
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPUS:-8}" # CPU 核心数上限，默认 8 核
+          memory: ${MEMORY:-16g} # 内存上限，默认 16 GB
+        # 以下为保底资源（软限制），按需开启：
+        # reservations:
+        #   cpus: '2'
+        #   memory: 2g
+
+    # ---------- 环境变量 ----------
+    environment:
+      # 时区设置，使容器内时间与宿主机同步
+      - TZ=Asia/Shanghai
+
+      # 当以非 root 用户执行 configure 脚本时，防止误报“不应以 root 运行”的错误
+      - FORCE_UNSAFE_CONFIGURE=1
+
+      # 如果需要将代理传入容器（结合 network_mode: host 时可直接使用宿主机代理）
+      # - HTTP_PROXY=http://host.docker.internal:7890
+      # - HTTPS_PROXY=http://host.docker.internal:7890
+      # - NO_PROXY=localhost,127.0.0.1
+
+    # ---------- 网络模式 ----------
+    # 使用宿主机网络，避免 Docker NAT 带来的性能损失，同时可直接继承宿主机代理设置。
+    # 如果你的宿主机有 IPv6 或特殊网络需求，这个模式也更方便。
+    network_mode: host
+
+    # ---------- 特权模式（默认关闭，按需启用）----------
+    # 如果你的编译过程需要挂载 loop 设备、创建文件系统镜像或执行 mount 操作，
+    # 且遇到“Operation not permitted”之类的权限错误，可取消下面这行的注释。
+    # privileged: true

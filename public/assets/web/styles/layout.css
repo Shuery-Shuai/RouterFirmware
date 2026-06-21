@@ -1,0 +1,120 @@
+/* 页面布局样式 */
+
+/* 基础布局 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+}
+
+/* 响应式容器 */
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  font-size: 28px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 20px 0;
+}
+
+/* 文件表格 */
+.file-list {
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  box-shadow: var(--shadow-md);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+thead {
+  background: var(--table-header-bg);
+  color: var(--text-inverse);
+}
+
+th {
+  padding: 14px 12px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text-inverse);
+}
+
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+tbody tr {
+  transition: background-color 0.2s;
+}
+
+tbody tr:hover {
+  background-color: var(--table-row-hover);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 文件图标 */
+.file-icon {
+  margin-right: 8px;
+  font-size: 18px;
+  display: inline-block;
+}
+
+/* 文件名链接 */
+td a {
+  color: var(--link-color);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+td a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  table {
+    font-size: 14px;
+  }
+
+  th, td {
+    padding: 8px 6px;
+  }
+
+  .file-icon {
+    font-size: 16px;
+    margin-right: 4px;
+  }
+}

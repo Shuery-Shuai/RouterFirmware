@@ -1,0 +1,396 @@
+# =============================================================================
+# 工作流名称: Router Firmware Builder
+# 描述: 自动编译 OpenWrt / ImmortalWrt 固件，并部署至 GitHub Pages 供下载。
+#
+# 触发条件 (on):
+#   push:
+#     - 分支: main
+#     - 标签: v* （通常用于版本发布）
+#     - 忽略路径: README.md （仅文档变更不触发）
+#   repository_dispatch:
+#     - 外部服务可通过 GitHub API 发送 repository_dispatch 事件触发，
+#       需在请求 body 中携带 client_payload 参数（见下文）。
+#   workflow_dispatch:
+#     - 手动触发，提供以下输入参数:
+#
+# 输入参数 (仅 workflow_dispatch 及 repository_dispatch):
+#   firmware         - 固件类型 (openwrt / immortalwrt)，默认 immortalwrt
+#   version          - 固件版本，如 snapshots / 25.12.0 等，默认 snapshots
+#   profile          - 设备配置文件名称，默认 bananapi_bpi-r4
+#   ask-menuconfig   - 编译前是否运行 menuconfig (true / false)，默认 false
+#   cache            - 是否启用编译缓存 (true / false)，默认 true
+#
+# 输出:
+#   - 编译产物 (Artifact): RouterFirmware，保留 7 天
+#   - 部署至 GitHub Pages 的静态网站，包含固件文件列表
+# =============================================================================
+
+name: Router Firmware Builder
+
+# =============================================================================
+# 触发事件详细配置
+# =============================================================================
+on:
+  push:
+    branches:
+      - main # 主分支推送触发
+    tags:
+      - "v*" # 版本标签推送触发
+    paths-ignore:
+      - README.md # 忽略 README 变更，避免无意义构建
+  repository_dispatch: # 允许外部 API 触发，payload 见下方说明
+  workflow_dispatch: # 手动触发
+    inputs:
+      firmware:
+        description: "固件类型 (openwrt/immortalwrt)"
+        required: false
+        default: "immortalwrt"
+      version:
+        description: "固件版本 (snapshots/25.12.0/etc)"
+        required: false
+        default: "snapshots"
+      profile:
+        description: "设备配置文件"
+        required: false
+        default: "bananapi_bpi-r4"
+      ask-menuconfig:
+        description: "编译前运行 menuconfig"
+        required: false
+        default: "false"
+      cache:
+        description: "启用编译缓存"
+        required: false
+        default: "true"
+      debug-ssh:
+        description: "启用 SSH 调试（连接后无超时，调试结束跳过编译直接上传产物）"
+        required: false
+        default: "false"
+
+# ----------------------------- 全局环境变量 ----------------------------------
+env:
+  TZ: Asia/Shanghai # 设置时区，确保日志时间准确
+
+# =============================================================================
+# Job: build
+# 负责解析参数、准备环境、利用缓存编译固件、上传产物
+# =============================================================================
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360 # 固件编译可能耗时较长，设定 6 小时上限
+    concurrency:
+      # 同一分支或标签的多次触发排队执行，避免资源竞争
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false # 不取消正在进行的运行，确保序列化
+    permissions:
+      actions: write # 需要列出和删除工作流运行记录
+    outputs:
+      device-name: ${{ steps.compile.outputs.device-name || steps.debug-compile.outputs.device-name }} # 传递给 deploy job
+      file-date: ${{ steps.compile.outputs.file-date || steps.debug-compile.outputs.file-date }} # 传递给 deploy job
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 解析输入参数（适用于所有触发事件）
+      # 统一处理 workflow_dispatch、repository_dispatch 和默认值
+      # -----------------------------------------------------------------------
+      - name: 解析输入参数
+        id: config
+        env:
+          INPUT_FIRMWARE: ${{ github.event.inputs.firmware || github.event.client_payload.firmware || 'immortalwrt' }}
+          INPUT_VERSION: ${{ github.event.inputs.version || github.event.client_payload.version || 'snapshots' }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile || github.event.client_payload.profile || 'bananapi_bpi-r4' }}
+          INPUT_ASK_MENUCONFIG: ${{ github.event.inputs.ask-menuconfig || github.event.client_payload.ask-menuconfig || 'false' }}
+          INPUT_CACHE: ${{ github.event.inputs.cache || github.event.client_payload.cache || 'true' }}
+          INPUT_DEBUG_SSH: ${{ github.event.inputs.debug-ssh || github.event.client_payload.debug-ssh || 'false' }}
+        run: |
+          echo "firmware=${INPUT_FIRMWARE}" >> $GITHUB_OUTPUT
+          echo "version=${INPUT_VERSION}" >> $GITHUB_OUTPUT
+          echo "profile=${INPUT_PROFILE}" >> $GITHUB_OUTPUT
+          echo "ask-menuconfig=${INPUT_ASK_MENUCONFIG}" >> $GITHUB_OUTPUT
+          echo "use_cache=${INPUT_CACHE}" >> $GITHUB_OUTPUT
+          # 打印最终生效的配置，方便调试
+          echo "::group::Effective Configuration"
+          echo "Firmware: ${INPUT_FIRMWARE}"
+          echo "Version: ${INPUT_VERSION}"
+          echo "Profile: ${INPUT_PROFILE}"
+          echo "Menuconfig: ${INPUT_ASK_MENUCONFIG}"
+          echo "Cache: ${INPUT_CACHE}"
+          echo "::endgroup::"
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 输出运行环境基本信息（触发事件、分支、系统信息）
+      # -----------------------------------------------------------------------
+      - name: 打印运行环境信息
+        run: |
+          echo "触发事件: ${{ github.event_name }}"
+          echo "分支/标签: ${{ github.ref }}"
+          echo "工作目录: $GITHUB_WORKSPACE"
+          echo "系统信息: $(uname -a)"
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 显示当前 Runner 的 CPU / 内存 / 磁盘信息，辅助排查性能问题
+      # -----------------------------------------------------------------------
+      - name: 检查服务器性能
+        run: |
+          echo "⚠️ 分配的服务器性能有限，若选择插件过多，请注意 CPU 负载！"
+          echo "已知 CPU 型号（降序）: 7763, 8370C, 8272CL, 8171M, E5-2673"
+          echo ""
+          echo "-------------------------- CPU 信息 --------------------------"
+          echo "物理 CPU 数量: $(grep 'physical id' /proc/cpuinfo | sort -u | wc -l)"
+          echo "逻辑核心数: $(nproc)"
+          echo "型号: $(grep -m1 name /proc/cpuinfo | awk -F: '{print $2}')"
+          echo "-------------------------- 内存信息 --------------------------"
+          sudo lshw -short -C memory | grep GiB || true
+          echo "-------------------------- 磁盘信息 --------------------------"
+          echo "磁盘数量: $(ls /dev/sd* 2>/dev/null | grep -v '[0-9]$' | wc -l)"
+          df -hT
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 使用社区 Action 清理不必要的软件包和缓存，释放磁盘空间
+      # -----------------------------------------------------------------------
+      - name: 优化磁盘空间
+        uses: hugoalh/disk-space-optimizer-ghaction@v0.8.1
+        with:
+          operate_sudo: "True"
+          general_include: ".+"
+          general_exclude: |- # 保留编译必需的 GCC 和 LLVM/Clang
+            ^GCC$
+            ^G\+\+$
+            Clang
+            LLVM
+          docker_include: ".+"
+          docker_prune: "True"
+          docker_clean: "True"
+          apt_prune: "True"
+          apt_clean: "True"
+          homebrew_prune: "True"
+          homebrew_clean: "True"
+          npm_prune: "True"
+          npm_clean: "True"
+          os_swap: "True"
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 签出当前仓库代码，获取编译脚本和配置文件
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 6: 安装编译 OpenWrt 所需的系统依赖，并清理无用组件
+      # -----------------------------------------------------------------------
+      - name: 初始化编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install libfuse-dev $(curl -fsSL https://raw.githubusercontent.com/0118Add/Openwrt-CI/refs/heads/main/depends-ubuntu-2204)
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
+          sudo timedatectl set-timezone "$TZ"
+          # 确保 runner 用户对工作目录有完整权限
+          sudo chown -R runner:runner "$GITHUB_WORKSPACE"
+
+      # -----------------------------------------------------------------------
+      # 步骤 7: 查找本工作流在同分支上一次成功运行的 ID，用于复用历史产物
+      # -----------------------------------------------------------------------
+      - name: 获取上次成功运行 ID
+        id: prev-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV_RUN_ID=$(gh run list --workflow "${{ github.workflow }}" \
+            --branch "${{ github.ref_name }}" \
+            --status success \
+            --limit 2 \
+            --json databaseId \
+            --jq ".[1].databaseId")
+          echo "上次成功运行 ID: ${PREV_RUN_ID:-无}"
+          echo "run-id=${PREV_RUN_ID}" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------------------------
+      # 步骤 8: 下载上一次运行的 Artifact (允许失败，以便首次运行不中断)
+      # -----------------------------------------------------------------------
+      - name: 下载历史构建产物
+        uses: actions/download-artifact@v8
+        if: steps.prev-run.outputs.run-id != ''
+        continue-on-error: true
+        with:
+          name: RouterFirmware
+          run-id: ${{ steps.prev-run.outputs.run-id }}
+          path: public-previous/ # 先下载到临时目录，避免直接覆盖
+
+      # -----------------------------------------------------------------------
+      # 步骤 9: 将历史产物合并到 public/，但明确排除 assets 目录，
+      #         防止覆盖本次构建可能已修改的重要文件。
+      #         若临时目录不存在（首次运行或下载失败），则优雅跳过。
+      # -----------------------------------------------------------------------
+      - name: 合并历史产物
+        if: steps.prev-run.outputs.run-id != ''
+        run: |
+          mkdir -p public/
+          if [ -d public-previous ]; then
+            rsync -av --exclude='assets/' public-previous/ public/
+            rm -rf public-previous/
+          else
+            echo "未找到历史产物目录，跳过合并"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 步骤 10: 调用脚本克隆指定固件类型的源代码
+      # -----------------------------------------------------------------------
+      - name: 克隆固件源码
+        run: |
+          bash "$GITHUB_WORKSPACE/scripts/source-management.sh" \
+            "$GITHUB_WORKSPACE/sources" \
+            "${{ steps.config.outputs.firmware }}" \
+            "${{ steps.config.outputs.version }}"
+
+      # -----------------------------------------------------------------------
+      # 步骤 11: 启用基于 GitHub Actions Cache 的编译缓存（ccache + 工具链）
+      #         仅在用户选择启用缓存时执行
+      # -----------------------------------------------------------------------
+      - name: 启用构建缓存
+        if: steps.config.outputs.use_cache == 'true'
+        uses: klever1988/cachewrtbuild@main
+        with:
+          ccache: "true"
+          toolchain: "true"
+          skip: "true"
+          prefix: ${{ github.workspace }}/sources/${{ steps.config.outputs.firmware }}
+          mixkey: ${{ steps.config.outputs.firmware }}-${{ steps.config.outputs.profile }}
+
+      # -----------------------------------------------------------------------
+      # 步骤 12: 启用 SSH 调试，则启动 tmate 会话，允许用户连接调试环境。
+      #         用户调试结束后手动结束会话，跳过编译直接上传产物。
+      # -----------------------------------------------------------------------
+      - name: SSH 调试会话
+        if: github.event.inputs.debug-ssh == 'true'
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true # 仅允许触发者连接
+
+      # -----------------------------------------------------------------------
+      # 步骤 13: 调试编译输出（仅调试 SSH 会话时执行），占位输出参数供后续步骤使用
+      #         使用户在 SSH 调试后仍能体验到完整的工作流执行和产物上传过程
+      # -----------------------------------------------------------------------
+      - name: 调试编译输出
+        id: debug-compile
+        if: github.event.inputs.debug-ssh == 'true' && !cancelled()
+        run: |
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "device-name=${{ steps.config.outputs.profile }}" >> $GITHUB_OUTPUT
+          echo "file-date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------------------------
+      # 步骤 14: 执行固件编译脚本，并捕获输出状态和设备名、日期
+      # -----------------------------------------------------------------------
+      - name: 编译固件
+        id: compile
+        if: github.event.inputs.debug-ssh != 'true' # 非 SSH 调试模式才执行编译
+        env:
+          FIRMWARE: ${{ steps.config.outputs.firmware }}
+          VERSION: ${{ steps.config.outputs.version }}
+          PROFILE: ${{ steps.config.outputs.profile }}
+          ask-menuconfig: ${{ steps.config.outputs.ask-menuconfig }}
+        run: |
+          chmod +x "$GITHUB_WORKSPACE/scripts/"*.sh
+          cd "$GITHUB_WORKSPACE/scripts"
+          ./make.sh "$FIRMWARE" "$VERSION" "$PROFILE" "$ask-menuconfig" || {
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          }
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "device-name=$PROFILE" >> $GITHUB_OUTPUT
+          echo "file-date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------------------------
+      # 步骤 15: 无论编译成功与否，输出磁盘使用情况（用于诊断空间问题）
+      # -----------------------------------------------------------------------
+      - name: 检查磁盘使用
+        if: (!cancelled())
+        run: df -hT
+
+      # -----------------------------------------------------------------------
+      # 步骤 16: 上传整个 public/ 目录为 Artifact，供后续部署使用
+      # -----------------------------------------------------------------------
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v7
+        if: ( steps.compile.outputs.status == 'success' || steps.debug-compile.outputs.status == 'success' ) && !cancelled()
+        with:
+          name: RouterFirmware
+          path: ${{ github.workspace }}/public
+          retention-days: 7
+          overwrite: true
+
+      # -----------------------------------------------------------------------
+      # 步骤 17: 清理过旧的工作流运行记录，保持仓库整洁
+      #         仅保留最近 7 天且至少 7 条记录
+      # -----------------------------------------------------------------------
+      - name: 清理旧工作流运行
+        if: ( steps.compile.outputs.status == 'success' || steps.debug-compile.outputs.status == 'success' ) && !cancelled()
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 7
+          keep_minimum_runs: 7
+
+  # =============================================================================
+  # Job: deploy
+  # 负责将编译产物部署为 GitHub Pages 静态站点
+  # =============================================================================
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build # 必须等待 build 成功并输出 device-name
+    if: needs.build.outputs.device-name != ''
+    env:
+      DEVICE_NAME: ${{ needs.build.outputs.device-name }}
+      FILE_DATE: ${{ needs.build.outputs.file-date }}
+
+    permissions:
+      pages: write # 允许部署 Pages
+      id-token: write # 用于 OIDC 认证（推荐做法）
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 签出仓库，以便执行生成索引的脚本
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 下载 build job 上传的 RouterFirmware 产物到 public/
+      # -----------------------------------------------------------------------
+      - name: 下载构建产物
+        uses: actions/download-artifact@v8
+        with:
+          name: RouterFirmware
+          path: public/
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 调用脚本生成固件文件索引页面
+      # -----------------------------------------------------------------------
+      - name: 生成固件索引页
+        run: |
+          chmod +x "${{ github.workspace }}/scripts/generate-index.sh"
+          "${{ github.workspace }}/scripts/generate-index.sh"
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 将 public/ 目录打包为 Pages Artifact
+      # -----------------------------------------------------------------------
+      - name: 上传 Pages 产物
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: public/
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 执行部署，发布到 GitHub Pages
+      # -----------------------------------------------------------------------
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

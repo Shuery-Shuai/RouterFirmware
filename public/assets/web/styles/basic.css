@@ -1,0 +1,391 @@
+/* 字体定义 */
+@font-face {
+  font-family: "SmileySans";
+  src: url("/assets/web/fonts/smiley/SmileySans-Oblique.ttf.woff2")
+    format("woff2")
+}
+
+/* Sarasa Mono SC 字体族 - 多种权重和样式 */
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-extralight-nerd-font.woff2")
+    format("woff2");
+  font-weight: 200;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-extralightitalic-nerd-font.woff2")
+    format("woff2");
+  font-weight: 200;
+  font-style: italic;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-light-nerd-font.woff2")
+    format("woff2");
+  font-weight: 300;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-lightitalic-nerd-font.woff2")
+    format("woff2");
+  font-weight: 300;
+  font-style: italic;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-regular-nerd-font.woff2")
+    format("woff2");
+  font-weight: 400;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-italic-nerd-font.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-semibold-nerd-font.woff2")
+    format("woff2");
+  font-weight: 600;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-semibolditalic-nerd-font.woff2")
+    format("woff2");
+  font-weight: 600;
+  font-style: italic;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-bold-nerd-font.woff2")
+    format("woff2");
+  font-weight: 700;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("/assets/web/fonts/sarasa/sarasa-mono-sc-bolditalic-nerd-font.woff2")
+    format("woff2");
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* 字体应用 */
+body {
+  font-family: "SmileySans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+code,
+pre,
+.hljs,
+.readme-content,
+.sh,
+.hash {
+  font-family: "Sarasa Mono SC", "Consolas", "Monaco", monospace;
+}
+
+/* 加载状态 */
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+/* 错误提示 */
+.error {
+  color: var(--danger-color);
+  padding: 20px;
+  background: var(--error-bg);
+  border-left: 4px solid var(--danger-color);
+  border-radius: 4px;
+  margin: 20px 0;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 面包屑导航 */
+.breadcrumb {
+  margin: 20px 0;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--breadcrumb-bg);
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.breadcrumb a {
+  color: var(--link-color);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.breadcrumb a:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+
+/* 搜索区域 */
+.search-box {
+  margin: 24px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.search-box input {
+  flex: 1;
+  min-width: 250px;
+  max-width: 500px;
+}
+
+.search-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.search-buttons button {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary-color);
+  color: var(--text-inverse);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 163, 225, 0.2);
+}
+
+.search-buttons button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 163, 225, 0.3);
+}
+
+.search-buttons button:active {
+  background: var(--primary-active);
+  transform: translateY(0);
+}
+
+/* 搜索输入框 */
+.search-input {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--input-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  background-color: var(--card-bg);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  border-color: var(--input-border-focus);
+  box-shadow: var(--shadow-input-focus);
+  background-color: var(--card-bg);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* 搜索信息 */
+.search-info {
+  margin: 12px 0;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  display: none;
+  background: var(--search-info-bg);
+  border-left: 4px solid var(--primary-color);
+  border-radius: 4px;
+}
+
+.search-info.active {
+  display: block;
+}
+
+.highlight {
+  background-color: var(--warning-color);
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-weight: 600;
+  color: var(--text-inverse);
+}
+
+/* 文件大小和日期 */
+.size {
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.date {
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* 哈希值 */
+.hash {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* 复制按钮 */
+.copy-btn {
+  cursor: pointer;
+  margin-left: 5px;
+  display: inline-block;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.copy-btn:active {
+  transform: scale(0.95);
+}
+
+.copy-btn.success {
+  color: var(--success-color);
+  opacity: 1;
+  animation: pop 0.3s ease-in-out;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1.2);
+  }
+}
+
+/* README 区块样式 */
+.readme-wrapper {
+  margin-top: 16px;
+  padding: 12px !important;
+  background: var(--readme-bg);
+  border-top: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  border-radius: 8px;
+}
+
+.readme-wrapper h2 {
+  margin-top: 0;
+  color: var(--text-primary);
+}
+
+.readme-content {
+  background: var(--code-bg);
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+}
+
+.hljs {
+  border-radius: 4px;
+  background: var(--code-bg) !important;
+}
+
+/* README 容器 */
+.readme-container.markdown-body {
+  margin: 32px 0 0 0 !important;
+  padding: 24px;
+  background: var(--readme-bg);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
+}
+
+/* GitHub Markdown 主题适配 */
+.markdown-body {
+  box-sizing: border-box;
+  background-color: transparent !important;
+  color: var(--text-primary);
+}
+
+/* 深色主题下的 markdown */
+[data-theme="dark"] .markdown-body {
+  color-scheme: dark;
+}
+
+/* 代码块字体 */
+.markdown-body pre,
+.markdown-body pre code,
+.markdown-body code {
+  font-family: "Sarasa Mono SC", "Consolas", "Monaco", monospace !important;
+}
+
+/* 代码块复制按钮样式 */
+.markdown-body pre {
+  position: relative;
+}
+
+/* 代码块复制按钮样式 */
+.code-block-wrapper {
+  position: relative;
+}
+
+.copy-code-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  background-color: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.copy-code-btn:hover {
+  background-color: var(--primary-hover);
+}
+
+.copy-code-btn.copied {
+  background-color: var(--info-color);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .search-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-box input {
+    max-width: none;
+  }
+
+  .search-buttons {
+    flex-direction: column;
+  }
+
+  .search-buttons button {
+    width: 100%;
+  }
+}
+

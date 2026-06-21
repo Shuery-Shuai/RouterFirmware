@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <title>重定向中...</title>
+  <script>
+    // GitHub Pages SPA 重定向方案
+    // 保存当前路径到 sessionStorage，然后重定向到根路径
+    sessionStorage.setItem('redirectPath', location.pathname + location.search + location.hash);
+    location.replace('/');
+  </script>
+</head>
+<body>
+  <p>正在重定向...</p>
+</body>
+</html>

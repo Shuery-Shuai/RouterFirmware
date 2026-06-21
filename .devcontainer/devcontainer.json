@@ -1,0 +1,77 @@
+// =============================================================================
+// Dev Container 配置文件
+// 描述: 基于现有 docker-compose.yml 快速启动 ImmortalWrt 编译环境，
+//       通过 VS Code Remote - Containers 获得完整的 IDE 体验。
+//
+// 使用方式:
+//   1. 确保项目根目录存在 docker-compose.yml（已包含编译服务定义）。
+//   2. 在 VS Code 中打开项目，按 F1 并选择 "Dev Containers: Reopen in Container"。
+//   3. 首次启动将拉取镜像并创建容器，之后可直接在集成终端中进行编译。
+//
+// 与 docker-compose.yml 的关系:
+//   本文件复用 docker-compose.yml 中定义的 rtfw-builder-env 服务，
+//   不创建额外的 Dockerfile 或卷挂载，避免配置重复。
+// =============================================================================
+{
+  // 在 VS Code 中显示的容器名称（Remote Explorer 和左下角状态栏）
+  "name": "Router Firmware Builder Environment",
+
+  // 指向项目根目录下的 docker-compose.yml（相对于 .devcontainer 文件夹的父目录）
+  "dockerComposeFile": "../docker-compose.yml",
+
+  // 指定要使用的 Docker Compose 服务名（必须与 compose 文件中的服务名称一致）
+  "service": "rtfw-builder-env",
+
+  // 容器内的工作目录，与 compose 中 working_dir 保持一致
+  // Dev Containers 会打开此目录作为默认工作区
+  "workspaceFolder": "/home/immortalwrt/workdir",
+
+  // -------------------------------------------------------------------------
+  // VS Code 定制化配置（可选但推荐）
+  // 自动安装 Shell 开发相关扩展，统一团队编码体验
+  // -------------------------------------------------------------------------
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools", // C/C++ 语言支持
+        "ms-azuretools.vscode-docker", // Docker 语法高亮和命令
+        "timonwong.shellcheck", // Shell 脚本静态分析
+        "mads-hartmann.bash-ide-vscode", // Bash IDE 智能提示
+        "foxundermoon.shell-format" // Shell 脚本格式化
+      ],
+      // 推荐的编辑器设置（可自行调整）
+      "settings": {
+        "editor.renderWhitespace": "all", // 显示所有空白字符
+        "files.trimTrailingWhitespace": true // 保存时自动删除行尾空格
+      }
+    }
+  },
+
+  // -------------------------------------------------------------------------
+  // 容器内使用的用户
+  // 你的镜像默认使用 root 用户，若无特殊需求保持 "root" 即可
+  // -------------------------------------------------------------------------
+  "remoteUser": "root",
+
+  // -------------------------------------------------------------------------
+  // 关闭 VS Code 窗口时的行为
+  // "stopCompose" 表示执行 docker compose stop，保留容器（但停止运行）
+  // 若希望彻底删除容器，可改为 "downCompose"
+  // -------------------------------------------------------------------------
+  "shutdownAction": "stopCompose"
+
+  // -------------------------------------------------------------------------
+  // 容器创建后自动执行的命令（可选）
+  // 例如检查依赖版本或打印欢迎信息，按需取消注释
+  // -------------------------------------------------------------------------
+  // "postCreateCommand": "echo 'Dev Container 已准备就绪，可以开始编译。'"
+
+  // -------------------------------------------------------------------------
+  // 其他可选配置（按需启用）
+  // "features": {},                   // 通过 devcontainer features 安装额外工具
+  // "forwardPorts": [],               // 需要转发的端口
+  // "mounts": [],                     // 额外的挂载点
+  // "runArgs": [],                    // 传递给 docker run 的额外参数
+  // "overrideCommand": false          // 是否覆盖容器默认命令
+  // -------------------------------------------------------------------------
+}
