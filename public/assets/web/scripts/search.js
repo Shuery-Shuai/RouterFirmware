@@ -196,13 +196,13 @@ function renderTable() {
         : `<span title="${item.sha256}">${item.sha256.substring(0, 8)}...</span><span class="copy-btn" onclick="copySHA256('${item.sha256}', this)" title="复制完整 SHA256">📋</span>`;
 
     html += `<tr>
-			<td class="n">${item.icon} <a href="${item.url}">${item.name}</a></td>
-			<td class="m">${item.type}</td>
-			<td class="s">${item.size}</td>
-			<td class="sh">${sha256Display}</td>
-			<td class="d">${item.date}</td>
-			<td class="p" data-full="${item.path}">${item.path}</td>
-		</tr>`;
+      <td class="n">${item.icon} <a href="${item.url}">${item.name}</a></td>
+      <td class="m">${item.type}</td>
+      <td class="s">${item.size}</td>
+      <td class="sh">${sha256Display}</td>
+      <td class="d">${item.date}</td>
+      <td class="p" data-full="${item.path}">${item.path}</td>
+    </tr>`;
   }
 
   html += "</tbody></table></div>";

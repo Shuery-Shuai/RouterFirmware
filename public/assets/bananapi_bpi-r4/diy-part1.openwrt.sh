@@ -56,41 +56,41 @@
 #   modify_partition 50  # 扩展 50MB
 #######################################
 modify_partition() {
-	local append_size="$1"
-	local partition_file="target/linux/mediatek/image/filogic.mk"
-	local scope_build_start='^define\sBuild\/mt798x-gpt'
-	local scope_build_end='^endef'
-	local scope_device_start='^define\sDevice\/bananapi_bpi-r4-common'
-	local scope_device_end='^endef'
+    local append_size="$1"
+    local partition_file="target/linux/mediatek/image/filogic.mk"
+    local scope_build_start='^define\sBuild\/mt798x-gpt'
+    local scope_build_end='^endef'
+    local scope_device_start='^define\sDevice\/bananapi_bpi-r4-common'
+    local scope_device_end='^endef'
 
-	# 检查文件是否存在
-	if [[ ! -f "${partition_file}" ]]; then
-		printf "Error: File %s does not exist.\n" "${partition_file}" >&2
-		return 1
-	fi
+    # 检查文件是否存在
+    if [[ ! -f "${partition_file}" ]]; then
+        printf "Error: File %s does not exist.\n" "${partition_file}" >&2
+        return 1
+    fi
 
-	printf "Modifying %s...\n" "${partition_file}"
+    printf "Modifying %s...\n" "${partition_file}"
 
-	# 计算新的分区大小（原始值 + 追加大小）
-	local new_32=$((32 + append_size))
-	local new_44=$((44 + append_size))
-	local new_45=$((45 + append_size))
-	local new_51=$((51 + append_size))
-	local new_52=$((52 + append_size))
-	local new_56=$((56 + append_size))
-	local new_64=$((64 + append_size))
+    # 计算新的分区大小（原始值 + 追加大小）
+    local new_32=$((32 + append_size))
+    local new_44=$((44 + append_size))
+    local new_45=$((45 + append_size))
+    local new_51=$((51 + append_size))
+    local new_52=$((52 + append_size))
+    local new_56=$((56 + append_size))
+    local new_64=$((64 + append_size))
 
-	# 执行 sed 操作：在指定作用域内替换分区大小
-	# 第一个作用域 (Build/mt798x-gpt): 修改 GPT 分区表定义
-	# 第二个作用域 (Device/bananapi_bpi-r4-common): 修改设备镜像大小限制
-	if ! sed -i -E \
-		-e "/${scope_build_start}/,/${scope_build_end}/ {
+    # 执行 sed 操作：在指定作用域内替换分区大小
+    # 第一个作用域 (Build/mt798x-gpt): 修改 GPT 分区表定义
+    # 第二个作用域 (Device/bananapi_bpi-r4-common): 修改设备镜像大小限制
+    if ! sed -i -E \
+        -e "/${scope_build_start}/,/${scope_build_end}/ {
        # 修改分区表偏移量
        /recovery/s/32M@/${new_32}M@/
        /install/s/@44M/@${new_44}M/
        /production/s/@64M/@${new_64}M/
      }" \
-		-e "/${scope_device_start}/,/${scope_device_end}/ {
+        -e "/${scope_device_start}/,/${scope_device_end}/ {
        # 修改各类镜像大小限制
        /append-image-stage\s+initramfs-recovery\.itb/s/44m/${new_44}m/
        /mt7988-bl2\s+spim-nand-ubi-comb/s/44M/${new_44}M/
@@ -101,13 +101,13 @@ modify_partition() {
        /append-image\s+squashfs-sysupgrade\.itb/s/64M/${new_64}M/
        /IMAGE_SIZE/s/64/${new_64}/
      }" \
-		"${partition_file}"; then
-		printf "Error: Failed to modify %s.\n" "${partition_file}" >&2
-		return 1
-	fi
+        "${partition_file}"; then
+        printf "Error: Failed to modify %s.\n" "${partition_file}" >&2
+        return 1
+    fi
 
-	printf "Done. Result:\n"
-	return 0
+    printf "Done. Result:\n"
+    return 0
 }
 
 #######################################
@@ -137,14 +137,14 @@ modify_partition() {
 #   scope_grep "filogic.mk" "$START" "$END" 'recovery|install'
 #######################################
 scope_grep() {
-	local file="$1"
-	local start_pattern="$2"
-	local end_pattern="$3"
-	local grep_patterns="$4"
+    local file="$1"
+    local start_pattern="$2"
+    local end_pattern="$3"
+    local grep_patterns="$4"
 
-	echo "━━━━━━━━━━━━━━━━━━━━ Partition info from ${start_pattern} to ${end_pattern} ━━━━━━━━━━━━━━━━━━━━"
-	sed -n -e "/${start_pattern}/,/${end_pattern}/p" "${file}" | grep -E --color=always "${grep_patterns}"
-	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━ Partition info from ${start_pattern} to ${end_pattern} ━━━━━━━━━━━━━━━━━━━━"
+    sed -n -e "/${start_pattern}/,/${end_pattern}/p" "${file}" | grep -E --color=always "${grep_patterns}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 #######################################
@@ -189,9 +189,9 @@ scope_grep() {
 #   _log ERROR "文件不存在: ${file}"
 #######################################
 _log() {
-	local level="$1"
-	shift
-	printf '[%(%Y-%m-%d %H:%M:%S)T] [%s] %s\n' -1 "${level}" "$*" >&2
+    local level="$1"
+    shift
+    printf '[%(%Y-%m-%d %H:%M:%S)T] [%s] %s\n' -1 "${level}" "$*" >&2
 }
 
 #######################################
@@ -222,46 +222,46 @@ _log() {
 #   clone_repo 'https://github.com/user/repo' 'master' '--filter=blob:none --sparse' 'custom-packages/repo'
 #######################################
 clone_repo() {
-	local repo="$1"
-	local branch="$2"
-	local args="$3"
-	local target="$4"
-	local attempt
+    local repo="$1"
+    local branch="$2"
+    local args="$3"
+    local target="$4"
+    local attempt
 
-	if [[ -d "${target}" ]]; then
-		# 目录已存在，尝试更新
-		printf 'Pulling %s at %s...\n' "${repo}" "${target}"
-		for attempt in {1..3}; do
-			# 清理工作区 -> 恢复修改 -> 拉取更新
-			if git -C "${target}" clean -fdx &&
-				git -C "${target}" restore . &&
-				git -C "${target}" pull; then
-				break
-			else
-				printf 'Pull attempt %d failed, retrying...\n' "${attempt}"
-				sleep $((attempt * 2)) # 递增等待时间：2s, 4s, 6s
-			fi
-		done
-	else
-		# 目录不存在，克隆新仓库
-		printf 'Cloning %s %s to %s, using args: %s\n' \
-			"${repo}" "${branch}" "${target}" "${args}"
-		for attempt in {1..3}; do
-			printf 'Clone attempt %d...\n' "${attempt}"
-			# 将参数字符串拆分并传递给 git clone
-			if eval "git clone -b '${branch}' ${args} '${repo}' '${target}'"; then
-				break
-			else
-				printf 'Clone attempt %d failed!\n' "${attempt}"
-				sleep $((attempt * 2))
-				rm -rf "${target}" # 清理失败的半成品
-				if [[ "${attempt}" -eq 3 ]]; then
-					_log 'ERROR' "Failed to clone ${repo} after 3 attempts."
-					exit 1
-				fi
-			fi
-		done
-	fi
+    if [[ -d "${target}" ]]; then
+        # 目录已存在，尝试更新
+        printf 'Pulling %s at %s...\n' "${repo}" "${target}"
+        for attempt in {1..3}; do
+            # 清理工作区 -> 恢复修改 -> 拉取更新
+            if git -C "${target}" clean -fdx &&
+                git -C "${target}" restore . &&
+                git -C "${target}" pull; then
+                break
+            else
+                printf 'Pull attempt %d failed, retrying...\n' "${attempt}"
+                sleep $((attempt * 2)) # 递增等待时间：2s, 4s, 6s
+            fi
+        done
+    else
+        # 目录不存在，克隆新仓库
+        printf 'Cloning %s %s to %s, using args: %s\n' \
+            "${repo}" "${branch}" "${target}" "${args}"
+        for attempt in {1..3}; do
+            printf 'Clone attempt %d...\n' "${attempt}"
+            # 将参数字符串拆分并传递给 git clone
+            if eval "git clone -b '${branch}' ${args} '${repo}' '${target}'"; then
+                break
+            else
+                printf 'Clone attempt %d failed!\n' "${attempt}"
+                sleep $((attempt * 2))
+                rm -rf "${target}" # 清理失败的半成品
+                if [[ "${attempt}" -eq 3 ]]; then
+                    _log 'ERROR' "Failed to clone ${repo} after 3 attempts."
+                    exit 1
+                fi
+            fi
+        done
+    fi
 }
 
 #######################################
@@ -277,101 +277,101 @@ clone_repo() {
 
 # BPI-R4 PWM 风扇控制
 clone_repo 'https://github.com/anoixa/bpi-r4-pwm-fan' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/bpi-r4-pwm-fan'
+    'main' \
+    '--depth=1' \
+    'custom-packages/bpi-r4-pwm-fan'
 
 # ImmortalWrt LuCI 仓库（稀疏克隆：仅 dae/daed 应用）
 clone_repo 'https://github.com/immortalwrt/luci' \
-	'master' \
-	'--filter=blob:none --sparse --depth=1' \
-	'custom-packages/luci'
+    'master' \
+    '--filter=blob:none --sparse --depth=1' \
+    'custom-packages/luci'
 (
-	cd 'custom-packages/luci' || exit 1
-	git sparse-checkout set applications/luci-app-dae applications/luci-app-daed
+    cd 'custom-packages/luci' || exit 1
+    git sparse-checkout set applications/luci-app-dae applications/luci-app-daed
 )
 
 # Argon 主题配置应用
 clone_repo 'https://github.com/jerrykuku/luci-app-argon-config' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/luci-app-argon-config'
+    'master' \
+    '--depth=1' \
+    'custom-packages/luci-app-argon-config'
 
 # DDNS-Go 动态域名解析
 clone_repo 'https://github.com/sirpdboy/luci-app-ddns-go' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/luci-app-ddns-go'
+    'main' \
+    '--depth=1' \
+    'custom-packages/luci-app-ddns-go'
 
 # 磁盘管理工具
 clone_repo 'https://github.com/lisaac/luci-app-diskman' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/luci-app-diskman'
+    'master' \
+    '--depth=1' \
+    'custom-packages/luci-app-diskman'
 
 # 风扇控制应用
 clone_repo 'https://github.com/rockjake/luci-app-fancontrol.git' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/luci-app-fancontrol'
+    'main' \
+    '--depth=1' \
+    'custom-packages/luci-app-fancontrol'
 
 # FanXpert 风扇控制应用
 clone_repo 'https://github.com/Shuery-Shuai/luci-app-fanxpert.git' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/luci-app-fanxpert'
+    'main' \
+    '--depth=1' \
+    'custom-packages/luci-app-fanxpert'
 
 # Lucky 网络工具
 clone_repo 'https://github.com/gdy666/luci-app-lucky.git' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/luci-app-lucky'
+    'main' \
+    '--depth=1' \
+    'custom-packages/luci-app-lucky'
 
 # Nginx 管理应用
 clone_repo 'https://github.com/zhanghua000/luci-app-nginx' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/luci-app-nginx'
+    'master' \
+    '--depth=1' \
+    'custom-packages/luci-app-nginx'
 
 # ZeroTier 虚拟局域网
 clone_repo 'https://github.com/zhengmz/luci-app-zerotier' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/luci-app-zerotier'
+    'master' \
+    '--depth=1' \
+    'custom-packages/luci-app-zerotier'
 
 # Argon 主题
 clone_repo 'https://github.com/jerrykuku/luci-theme-argon.git' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/luci-theme-argon'
+    'master' \
+    '--depth=1' \
+    'custom-packages/luci-theme-argon'
 
 # OpenClash 代理管理工具
 clone_repo 'https://github.com/vernesong/OpenClash' \
-	'dev' \
-	'--depth=1' \
-	'custom-packages/openclash'
+    'dev' \
+    '--depth=1' \
+    'custom-packages/openclash'
 
 # ImmortalWrt 软件包仓库（稀疏克隆：golang、dae、daed）
 clone_repo 'https://github.com/immortalwrt/packages' \
-	'master' \
-	'--filter=blob:none --sparse --depth=1' \
-	'custom-packages/packages'
+    'master' \
+    '--filter=blob:none --sparse --depth=1' \
+    'custom-packages/packages'
 (
-	cd 'custom-packages/packages' || exit 1
-	git sparse-checkout set lang/golang net/dae net/daed
+    cd 'custom-packages/packages' || exit 1
+    git sparse-checkout set lang/golang net/dae net/daed
 )
 
 # qBittorrent BT 下载工具
 clone_repo 'https://github.com/sbwml/openwrt-qBittorrent' \
-	'master' \
-	'--depth=1' \
-	'custom-packages/qbittorrent'
+    'master' \
+    '--depth=1' \
+    'custom-packages/qbittorrent'
 
 # 孙大强的软件包备份仓库
 clone_repo 'https://github.com/sundaqiang/openwrt-packages-backup' \
-	'main' \
-	'--depth=1' \
-	'custom-packages/sundaqiang'
+    'main' \
+    '--depth=1' \
+    'custom-packages/sundaqiang'
 
 #######################################
 # 添加 XDP sockets 诊断内核模块

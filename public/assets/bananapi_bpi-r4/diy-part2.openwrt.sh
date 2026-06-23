@@ -58,9 +58,9 @@
 #   _log ERROR "文件不存在: ${file}"
 #######################################
 _log() {
-	local level="$1"
-	shift
-	printf '[%(%Y-%m-%d %H:%M:%S)T] [%s] %s\n' -1 "${level}" "$*" >&2
+    local level="$1"
+    shift
+    printf '[%(%Y-%m-%d %H:%M:%S)T] [%s] %s\n' -1 "${level}" "$*" >&2
 }
 
 #######################################
@@ -91,46 +91,46 @@ _log() {
 #   clone_repo 'https://github.com/user/repo' 'master' '--filter=blob:none --sparse' 'custom-packages/repo'
 #######################################
 clone_repo() {
-	local repo="$1"
-	local branch="$2"
-	local args="$3"
-	local target="$4"
-	local attempt
+    local repo="$1"
+    local branch="$2"
+    local args="$3"
+    local target="$4"
+    local attempt
 
-	if [[ -d "${target}" ]]; then
-		# 目录已存在，尝试更新
-		printf 'Pulling %s at %s...\n' "${repo}" "${target}"
-		for attempt in {1..3}; do
-			# 清理工作区 -> 恢复修改 -> 拉取更新
-			if git -C "${target}" clean -fdx &&
-				git -C "${target}" restore . &&
-				git -C "${target}" pull; then
-				break
-			else
-				printf 'Pull attempt %d failed, retrying...\n' "${attempt}"
-				sleep $((attempt * 2)) # 递增等待时间：2s, 4s, 6s
-			fi
-		done
-	else
-		# 目录不存在，克隆新仓库
-		printf 'Cloning %s %s to %s, using args: %s\n' \
-			"${repo}" "${branch}" "${target}" "${args}"
-		for attempt in {1..3}; do
-			printf 'Clone attempt %d...\n' "${attempt}"
-			# 将参数字符串拆分并传递给 git clone
-			if eval "git clone -b '${branch}' ${args} '${repo}' '${target}'"; then
-				break
-			else
-				printf 'Clone attempt %d failed!\n' "${attempt}"
-				sleep $((attempt * 2))
-				rm -rf "${target}" # 清理失败的半成品
-				if [[ "${attempt}" -eq 3 ]]; then
-					_log 'ERROR' "Failed to clone ${repo} after 3 attempts."
-					exit 1
-				fi
-			fi
-		done
-	fi
+    if [[ -d "${target}" ]]; then
+        # 目录已存在，尝试更新
+        printf 'Pulling %s at %s...\n' "${repo}" "${target}"
+        for attempt in {1..3}; do
+            # 清理工作区 -> 恢复修改 -> 拉取更新
+            if git -C "${target}" clean -fdx &&
+                git -C "${target}" restore . &&
+                git -C "${target}" pull; then
+                break
+            else
+                printf 'Pull attempt %d failed, retrying...\n' "${attempt}"
+                sleep $((attempt * 2)) # 递增等待时间：2s, 4s, 6s
+            fi
+        done
+    else
+        # 目录不存在，克隆新仓库
+        printf 'Cloning %s %s to %s, using args: %s\n' \
+            "${repo}" "${branch}" "${target}" "${args}"
+        for attempt in {1..3}; do
+            printf 'Clone attempt %d...\n' "${attempt}"
+            # 将参数字符串拆分并传递给 git clone
+            if eval "git clone -b '${branch}' ${args} '${repo}' '${target}'"; then
+                break
+            else
+                printf 'Clone attempt %d failed!\n' "${attempt}"
+                sleep $((attempt * 2))
+                rm -rf "${target}" # 清理失败的半成品
+                if [[ "${attempt}" -eq 3 ]]; then
+                    _log 'ERROR' "Failed to clone ${repo} after 3 attempts."
+                    exit 1
+                fi
+            fi
+        done
+    fi
 }
 
 #######################################
@@ -158,45 +158,45 @@ clone_repo() {
 #   _relpath "/home/user/project" "/opt/lib"  # 输出: ../../../opt/lib
 #######################################
 _relpath() {
-	local from_dir="$1"
-	local to_path="$2"
-	local abs_from abs_to
+    local from_dir="$1"
+    local to_path="$2"
+    local abs_from abs_to
 
-	# 获取绝对路径
-	abs_from="$(cd "${from_dir}" && pwd)" || return 1
-	abs_to="$(cd "${to_path}" && pwd)" || return 1
+    # 获取绝对路径
+    abs_from="$(cd "${from_dir}" && pwd)" || return 1
+    abs_to="$(cd "${to_path}" && pwd)" || return 1
 
-	# 将路径拆分为数组
-	local from_parts to_parts
-	IFS='/' read -ra from_parts <<<"${abs_from}"
-	IFS='/' read -ra to_parts <<<"${abs_to}"
+    # 将路径拆分为数组
+    local from_parts to_parts
+    IFS='/' read -ra from_parts <<<"${abs_from}"
+    IFS='/' read -ra to_parts <<<"${abs_to}"
 
-	# 找到公共前缀的结束位置
-	local i=0
-	while [[ ${i} -lt ${#from_parts[@]} &&
-		${i} -lt ${#to_parts[@]} &&
-		"${from_parts[${i}]}" == "${to_parts[${i}]}" ]]; do
-		((i++))
-	done
+    # 找到公共前缀的结束位置
+    local i=0
+    while [[ ${i} -lt ${#from_parts[@]} &&
+        ${i} -lt ${#to_parts[@]} &&
+        "${from_parts[${i}]}" == "${to_parts[${i}]}" ]]; do
+        ((i++))
+    done
 
-	# 计算需要向上的层数 (../)
-	local up_count=$((${#from_parts[@]} - i))
-	local rel_path=''
-	local j
+    # 计算需要向上的层数 (../)
+    local up_count=$((${#from_parts[@]} - i))
+    local rel_path=''
+    local j
 
-	for ((j = 0; j < up_count; j++)); do
-		rel_path+='../'
-	done
+    for ((j = 0; j < up_count; j++)); do
+        rel_path+='../'
+    done
 
-	# 添加从公共祖先到目标的路径
-	for ((j = i; j < ${#to_parts[@]}; j++)); do
-		rel_path+="${to_parts[${j}]}"
-		if [[ ${j} -lt $((${#to_parts[@]} - 1)) ]]; then
-			rel_path+='/'
-		fi
-	done
+    # 添加从公共祖先到目标的路径
+    for ((j = i; j < ${#to_parts[@]}; j++)); do
+        rel_path+="${to_parts[${j}]}"
+        if [[ ${j} -lt $((${#to_parts[@]} - 1)) ]]; then
+            rel_path+='/'
+        fi
+    done
 
-	printf '%s' "${rel_path}"
+    printf '%s' "${rel_path}"
 }
 
 #######################################
@@ -223,35 +223,35 @@ _relpath() {
 #   _create_relative_symlink "/path/to/source" "feeds/luci/applications/app"
 #######################################
 _create_relative_symlink() {
-	local source_abs="$1"
-	local target_link="$2"
-	local target_dir
+    local source_abs="$1"
+    local target_link="$2"
+    local target_dir
 
-	target_dir="$(dirname "${target_link}")"
-	mkdir -p "${target_dir}"
+    target_dir="$(dirname "${target_link}")"
+    mkdir -p "${target_dir}"
 
-	# 删除已存在的链接或目录
-	if [[ -L "${target_link}" ]] || [[ -d "${target_link}" ]]; then
-		_log 'WARN' "  Removing existing symlink/directory at ${target_link}"
-		rm -rf "${target_link}"
-	fi
+    # 删除已存在的链接或目录
+    if [[ -L "${target_link}" ]] || [[ -d "${target_link}" ]]; then
+        _log 'WARN' "  Removing existing symlink/directory at ${target_link}"
+        rm -rf "${target_link}"
+    fi
 
-	# 计算相对路径
-	local rel_target
-	rel_target="$(_relpath "${target_dir}" "${source_abs}")"
-	if [[ -z "${rel_target}" ]]; then
-		_log 'ERROR' "  Failed to compute relative path from ${target_dir} to ${source_abs}"
-		return 1
-	fi
+    # 计算相对路径
+    local rel_target
+    rel_target="$(_relpath "${target_dir}" "${source_abs}")"
+    if [[ -z "${rel_target}" ]]; then
+        _log 'ERROR' "  Failed to compute relative path from ${target_dir} to ${source_abs}"
+        return 1
+    fi
 
-	# 创建符号链接
-	if ln -s "${rel_target}" "${target_link}"; then
-		_log 'INFO' "  SUCCESS: Created symlink ${target_link} -> ${rel_target}"
-		return 0
-	else
-		_log 'ERROR' "  FAILED: Could not create symlink ${target_link}"
-		return 1
-	fi
+    # 创建符号链接
+    if ln -s "${rel_target}" "${target_link}"; then
+        _log 'INFO' "  SUCCESS: Created symlink ${target_link} -> ${rel_target}"
+        return 0
+    else
+        _log 'ERROR' "  FAILED: Could not create symlink ${target_link}"
+        return 1
+    fi
 }
 
 #######################################
@@ -277,23 +277,23 @@ _create_relative_symlink() {
 #   _extract_pkg_name "/path/to/luci-app-example"  # 输出: luci-app-example
 #######################################
 _extract_pkg_name() {
-	local abs_dir="$1"
-	local makefile="${abs_dir}/Makefile"
-	local pkg_name
+    local abs_dir="$1"
+    local makefile="${abs_dir}/Makefile"
+    local pkg_name
 
-	if [[ ! -f "${makefile}" ]]; then
-		return 1
-	fi
+    if [[ ! -f "${makefile}" ]]; then
+        return 1
+    fi
 
-	# 提取 PKG_NAME 变量（支持 := 和 = 两种赋值方式）
-	pkg_name="$(grep -E '^\s*PKG_NAME\s*:?=' "${makefile}" | head -1 | sed -E 's/^\s*PKG_NAME\s*:?=\s*(.+)\s*$/\1/')"
+    # 提取 PKG_NAME 变量（支持 := 和 = 两种赋值方式）
+    pkg_name="$(grep -E '^\s*PKG_NAME\s*:?=' "${makefile}" | head -1 | sed -E 's/^\s*PKG_NAME\s*:?=\s*(.+)\s*$/\1/')"
 
-	if [[ -z "${pkg_name}" ]]; then
-		# 回退：使用目录名
-		pkg_name="$(basename "${abs_dir}")"
-	fi
+    if [[ -z "${pkg_name}" ]]; then
+        # 回退：使用目录名
+        pkg_name="$(basename "${abs_dir}")"
+    fi
 
-	printf '%s' "${pkg_name}"
+    printf '%s' "${pkg_name}"
 }
 
 #######################################
@@ -325,104 +325,104 @@ _extract_pkg_name() {
 #   # 输出: feeds/luci/applications/luci-app-example
 #######################################
 resolve_target_path() {
-	local abs_dir="$1"
-	local pkg_name="$2"
-	local target_path=''
+    local abs_dir="$1"
+    local pkg_name="$2"
+    local target_path=''
 
-	# 策略 1: LuCI 软件包快速路径（基于命名约定）
-	if [[ "${pkg_name}" == luci-app-* ]]; then
-		target_path="feeds/luci/applications/${pkg_name}"
-		_log 'INFO' '  Fast path: luci-app-* -> applications'
-	elif [[ "${pkg_name}" == luci-theme-* ]]; then
-		target_path="feeds/luci/themes/${pkg_name}"
-		_log 'INFO' '  Fast path: luci-theme-* -> themes'
-	elif [[ "${pkg_name}" == luci-lib-* ]]; then
-		target_path="feeds/luci/libs/${pkg_name}"
-		_log 'INFO' '  Fast path: luci-lib-* -> libs'
-	elif [[ "${pkg_name}" == luci-proto-* ]]; then
-		target_path="feeds/luci/protocols/${pkg_name}"
-		_log 'INFO' '  Fast path: luci-proto-* -> protocols'
-	else
-		# 策略 2: 从 Makefile 提取 SECTION 变量
-		local makefile="${abs_dir}/Makefile"
-		local section=''
-		if [[ -f "${makefile}" ]]; then
-			section="$(grep -E '^\s*SECTION\s*:?=' "${makefile}" | head -1 | sed -E 's/^\s*SECTION\s*:?=\s*([^[:space:]]+).*$/\1/')"
-		fi
-		_log 'INFO' "  Extracted SECTION from Makefile: '${section}'"
+    # 策略 1: LuCI 软件包快速路径（基于命名约定）
+    if [[ "${pkg_name}" == luci-app-* ]]; then
+        target_path="feeds/luci/applications/${pkg_name}"
+        _log 'INFO' '  Fast path: luci-app-* -> applications'
+    elif [[ "${pkg_name}" == luci-theme-* ]]; then
+        target_path="feeds/luci/themes/${pkg_name}"
+        _log 'INFO' '  Fast path: luci-theme-* -> themes'
+    elif [[ "${pkg_name}" == luci-lib-* ]]; then
+        target_path="feeds/luci/libs/${pkg_name}"
+        _log 'INFO' '  Fast path: luci-lib-* -> libs'
+    elif [[ "${pkg_name}" == luci-proto-* ]]; then
+        target_path="feeds/luci/protocols/${pkg_name}"
+        _log 'INFO' '  Fast path: luci-proto-* -> protocols'
+    else
+        # 策略 2: 从 Makefile 提取 SECTION 变量
+        local makefile="${abs_dir}/Makefile"
+        local section=''
+        if [[ -f "${makefile}" ]]; then
+            section="$(grep -E '^\s*SECTION\s*:?=' "${makefile}" | head -1 | sed -E 's/^\s*SECTION\s*:?=\s*([^[:space:]]+).*$/\1/')"
+        fi
+        _log 'INFO' "  Extracted SECTION from Makefile: '${section}'"
 
-		# 策略 3: SECTION 到 feed 的映射表
-		if [[ -n "${section}" ]]; then
-			case "${section}" in
-			luci)
-				target_path="feeds/luci/applications/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=luci -> feeds/luci/applications"
-				;;
-			net | network)
-				target_path="feeds/packages/net/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=net -> feeds/packages/net"
-				;;
-			utils | utilities)
-				target_path="feeds/packages/utils/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=utils -> feeds/packages/utils"
-				;;
-			lang | languages)
-				target_path="feeds/packages/lang/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=lang -> feeds/packages/lang"
-				;;
-			libs | libraries)
-				target_path="feeds/packages/libs/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=libs -> feeds/packages/libs"
-				;;
-			admin | administration)
-				target_path="feeds/packages/admin/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=admin -> feeds/packages/admin"
-				;;
-			devel | development)
-				target_path="feeds/packages/devel/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=devel -> feeds/packages/devel"
-				;;
-			multimedia)
-				target_path="feeds/packages/multimedia/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=multimedia -> feeds/packages/multimedia"
-				;;
-			kernel)
-				target_path="feeds/packages/kernel/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=kernel -> feeds/packages/kernel"
-				;;
-			base)
-				target_path="feeds/packages/base/${pkg_name}"
-				_log 'INFO' "  Mapped SECTION=base -> feeds/packages/base"
-				;;
-			*)
-				_log 'WARN' "  Unknown SECTION '${section}', falling back to name heuristics"
-				;;
-			esac
-		fi
+        # 策略 3: SECTION 到 feed 的映射表
+        if [[ -n "${section}" ]]; then
+            case "${section}" in
+            luci)
+                target_path="feeds/luci/applications/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=luci -> feeds/luci/applications"
+                ;;
+            net | network)
+                target_path="feeds/packages/net/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=net -> feeds/packages/net"
+                ;;
+            utils | utilities)
+                target_path="feeds/packages/utils/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=utils -> feeds/packages/utils"
+                ;;
+            lang | languages)
+                target_path="feeds/packages/lang/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=lang -> feeds/packages/lang"
+                ;;
+            libs | libraries)
+                target_path="feeds/packages/libs/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=libs -> feeds/packages/libs"
+                ;;
+            admin | administration)
+                target_path="feeds/packages/admin/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=admin -> feeds/packages/admin"
+                ;;
+            devel | development)
+                target_path="feeds/packages/devel/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=devel -> feeds/packages/devel"
+                ;;
+            multimedia)
+                target_path="feeds/packages/multimedia/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=multimedia -> feeds/packages/multimedia"
+                ;;
+            kernel)
+                target_path="feeds/packages/kernel/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=kernel -> feeds/packages/kernel"
+                ;;
+            base)
+                target_path="feeds/packages/base/${pkg_name}"
+                _log 'INFO' "  Mapped SECTION=base -> feeds/packages/base"
+                ;;
+            *)
+                _log 'WARN' "  Unknown SECTION '${section}', falling back to name heuristics"
+                ;;
+            esac
+        fi
 
-		# 策略 4: 名称启发式（SECTION 未知或为空时）
-		if [[ -z "${target_path}" ]]; then
-			if [[ "${pkg_name}" == net-* ]] || [[ "${pkg_name}" == network-* ]]; then
-				target_path="feeds/packages/net/${pkg_name}"
-				_log 'INFO' "  Name heuristic: net-* -> feeds/packages/net"
-			elif [[ "${pkg_name}" == *-utils ]] || [[ "${pkg_name}" == *-tools ]]; then
-				target_path="feeds/packages/utils/${pkg_name}"
-				_log 'INFO' "  Name heuristic: *-utils/tools -> feeds/packages/utils"
-			elif [[ "${pkg_name}" == lang-* ]]; then
-				target_path="feeds/packages/lang/${pkg_name}"
-				_log 'INFO' "  Name heuristic: lang-* -> feeds/packages/lang"
-			elif [[ "${pkg_name}" == lib* ]] || [[ "${pkg_name}" == *-lib ]]; then
-				target_path="feeds/packages/libs/${pkg_name}"
-				_log 'INFO' "  Name heuristic: lib* -> feeds/packages/libs"
-			else
-				# 策略 5: 默认回退
-				target_path="feeds/base/${pkg_name}"
-				_log 'INFO' "  Default fallback -> feeds/base"
-			fi
-		fi
-	fi
+        # 策略 4: 名称启发式（SECTION 未知或为空时）
+        if [[ -z "${target_path}" ]]; then
+            if [[ "${pkg_name}" == net-* ]] || [[ "${pkg_name}" == network-* ]]; then
+                target_path="feeds/packages/net/${pkg_name}"
+                _log 'INFO' "  Name heuristic: net-* -> feeds/packages/net"
+            elif [[ "${pkg_name}" == *-utils ]] || [[ "${pkg_name}" == *-tools ]]; then
+                target_path="feeds/packages/utils/${pkg_name}"
+                _log 'INFO' "  Name heuristic: *-utils/tools -> feeds/packages/utils"
+            elif [[ "${pkg_name}" == lang-* ]]; then
+                target_path="feeds/packages/lang/${pkg_name}"
+                _log 'INFO' "  Name heuristic: lang-* -> feeds/packages/lang"
+            elif [[ "${pkg_name}" == lib* ]] || [[ "${pkg_name}" == *-lib ]]; then
+                target_path="feeds/packages/libs/${pkg_name}"
+                _log 'INFO' "  Name heuristic: lib* -> feeds/packages/libs"
+            else
+                # 策略 5: 默认回退
+                target_path="feeds/base/${pkg_name}"
+                _log 'INFO' "  Default fallback -> feeds/base"
+            fi
+        fi
+    fi
 
-	printf '%s' "${target_path}"
+    printf '%s' "${target_path}"
 }
 
 #######################################
@@ -460,219 +460,219 @@ resolve_target_path() {
 #   create_symlinks 'custom-packages'
 #######################################
 create_symlinks() {
-	local custom_dir="$1"
+    local custom_dir="$1"
 
-	if [[ ! -d "${custom_dir}" ]]; then
-		_log 'ERROR' "Custom directory ${custom_dir} does not exist."
-		return 1
-	fi
+    if [[ ! -d "${custom_dir}" ]]; then
+        _log 'ERROR' "Custom directory ${custom_dir} does not exist."
+        return 1
+    fi
 
-	_log 'INFO' "Starting symlink creation for packages in ${custom_dir}"
+    _log 'INFO' "Starting symlink creation for packages in ${custom_dir}"
 
-	# 自动检测 OpenWrt 源码根目录
-	if [[ -z "${TOPDIR}" ]]; then
-		if [[ -f './rules.mk' ]]; then
-			export TOPDIR="${PWD}"
-			_log 'INFO' "Auto-detected TOPDIR: ${TOPDIR}"
-		elif [[ -f '../rules.mk' ]]; then
-			export TOPDIR="${PWD%/*}"
-			_log 'INFO' "Auto-detected TOPDIR: ${TOPDIR}"
-		else
-			_log 'ERROR' 'Cannot find OpenWrt TOPDIR (rules.mk not found).'
-			return 1
-		fi
-	fi
+    # 自动检测 OpenWrt 源码根目录
+    if [[ -z "${TOPDIR}" ]]; then
+        if [[ -f './rules.mk' ]]; then
+            export TOPDIR="${PWD}"
+            _log 'INFO' "Auto-detected TOPDIR: ${TOPDIR}"
+        elif [[ -f '../rules.mk' ]]; then
+            export TOPDIR="${PWD%/*}"
+            _log 'INFO' "Auto-detected TOPDIR: ${TOPDIR}"
+        else
+            _log 'ERROR' 'Cannot find OpenWrt TOPDIR (rules.mk not found).'
+            return 1
+        fi
+    fi
 
-	local cache_file="${custom_dir}/.symlink_cache"
-	declare -A cache_map   # 自动缓存: rel_path -> "mtime|target"
-	declare -A manual_map  # 手动条目: rel_path -> target_path
-	declare -A manual_skip # 跳过标记: rel_path -> "skip"
+    local cache_file="${custom_dir}/.symlink_cache"
+    declare -A cache_map   # 自动缓存: rel_path -> "mtime|target"
+    declare -A manual_map  # 手动条目: rel_path -> target_path
+    declare -A manual_skip # 跳过标记: rel_path -> "skip"
 
-	# 加载现有缓存（相对路径相对于 custom_dir）
-	if [[ -f "${cache_file}" ]]; then
-		_log 'INFO' "Loading cache from ${cache_file}"
-		local auto_count=0 manual_count=0
-		while IFS='|' read -r rel_path mtime target_path skip_flag; do
-			# 跳过注释行和空行
-			[[ -z "${rel_path}" || "${rel_path}" == \#* ]] && continue
+    # 加载现有缓存（相对路径相对于 custom_dir）
+    if [[ -f "${cache_file}" ]]; then
+        _log 'INFO' "Loading cache from ${cache_file}"
+        local auto_count=0 manual_count=0
+        while IFS='|' read -r rel_path mtime target_path skip_flag; do
+            # 跳过注释行和空行
+            [[ -z "${rel_path}" || "${rel_path}" == \#* ]] && continue
 
-			# 验证源目录是否仍然存在
-			if [[ ! -d "${custom_dir}/${rel_path}" ]]; then
-				_log 'WARN' "Stale cache entry '${rel_path}' (source missing), skipping."
-				continue
-			fi
+            # 验证源目录是否仍然存在
+            if [[ ! -d "${custom_dir}/${rel_path}" ]]; then
+                _log 'WARN' "Stale cache entry '${rel_path}' (source missing), skipping."
+                continue
+            fi
 
-			# 根据 mtime 字段判断条目类型
-			if [[ "${mtime}" =~ ^[0-9]+$ ]]; then
-				# 数字 mtime: 自动生成的条目
-				cache_map["${rel_path}"]="${mtime}|${target_path}"
-				((auto_count++))
-			else
-				# "manual": 用户手动定义的条目
-				manual_map["${rel_path}"]="${target_path}"
-				[[ "${skip_flag}" == "skip" ]] && manual_skip["${rel_path}"]="skip"
-				((manual_count++))
-			fi
-		done <"${cache_file}"
-		_log 'INFO' "Loaded ${auto_count} auto + ${manual_count} manual cache entries"
-	fi
+            # 根据 mtime 字段判断条目类型
+            if [[ "${mtime}" =~ ^[0-9]+$ ]]; then
+                # 数字 mtime: 自动生成的条目
+                cache_map["${rel_path}"]="${mtime}|${target_path}"
+                ((auto_count++))
+            else
+                # "manual": 用户手动定义的条目
+                manual_map["${rel_path}"]="${target_path}"
+                [[ "${skip_flag}" == "skip" ]] && manual_skip["${rel_path}"]="skip"
+                ((manual_count++))
+            fi
+        done <"${cache_file}"
+        _log 'INFO' "Loaded ${auto_count} auto + ${manual_count} manual cache entries"
+    fi
 
-	local total_packages=0 successful_links=0 failed_links=0
-	local cache_hits=0 cache_misses=0
+    local total_packages=0 successful_links=0 failed_links=0
+    local cache_hits=0 cache_misses=0
 
-	_log 'INFO' "Scanning for package directories (containing Makefile) under ${custom_dir}..."
+    _log 'INFO' "Scanning for package directories (containing Makefile) under ${custom_dir}..."
 
-	# 扫描所有包含 Makefile 的目录（排除 .git 和 files）
-	while IFS= read -r dir; do
-		[[ "${dir}" == "${custom_dir}" ]] && continue
+    # 扫描所有包含 Makefile 的目录（排除 .git 和 files）
+    while IFS= read -r dir; do
+        [[ "${dir}" == "${custom_dir}" ]] && continue
 
-		((total_packages++))
-		local abs_dir
-		abs_dir="$(cd "${dir}" && pwd)"
+        ((total_packages++))
+        local abs_dir
+        abs_dir="$(cd "${dir}" && pwd)"
 
-		# 提取软件包名称
-		local pkg_name
-		pkg_name="$(_extract_pkg_name "${abs_dir}")"
-		if [[ -z "${pkg_name}" ]]; then
-			pkg_name="$(basename "${dir}")"
-		fi
+        # 提取软件包名称
+        local pkg_name
+        pkg_name="$(_extract_pkg_name "${abs_dir}")"
+        if [[ -z "${pkg_name}" ]]; then
+            pkg_name="$(basename "${dir}")"
+        fi
 
-		_log 'INFO' '----------------------------------------'
-		_log 'INFO' "Processing package #${total_packages}: ${pkg_name} (directory: $(basename "${dir}"))"
-		_log 'INFO' "  Source directory: ${abs_dir}"
+        _log 'INFO' '----------------------------------------'
+        _log 'INFO' "Processing package #${total_packages}: ${pkg_name} (directory: $(basename "${dir}"))"
+        _log 'INFO' "  Source directory: ${abs_dir}"
 
-		# 计算相对于 custom_dir 的路径
-		local abs_custom_dir
-		abs_custom_dir="$(cd "${custom_dir}" && pwd)"
-		local rel_path="${abs_dir#"${abs_custom_dir}"/}"
+        # 计算相对于 custom_dir 的路径
+        local abs_custom_dir
+        abs_custom_dir="$(cd "${custom_dir}" && pwd)"
+        local rel_path="${abs_dir#"${abs_custom_dir}"/}"
 
-		local makefile_path="${abs_dir}/Makefile"
-		local current_mtime
-		current_mtime="$(stat -c %Y "${makefile_path}" 2>/dev/null || printf '0')"
+        local makefile_path="${abs_dir}/Makefile"
+        local current_mtime
+        current_mtime="$(stat -c %Y "${makefile_path}" 2>/dev/null || printf '0')"
 
-		local target_path=''
-		local used_cache=0
-		local skip_this=0
+        local target_path=''
+        local used_cache=0
+        local skip_this=0
 
-		# 优先检查手动定义条目
-		if [[ -n "${manual_map[${rel_path}]}" ]]; then
-			target_path="${manual_map[${rel_path}]}"
-			[[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_this=1
-			_log 'INFO' "  Using manual entry: target='${target_path}', skip=${skip_this}"
-			used_cache=1
-			((cache_hits++))
-		fi
+        # 优先检查手动定义条目
+        if [[ -n "${manual_map[${rel_path}]}" ]]; then
+            target_path="${manual_map[${rel_path}]}"
+            [[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_this=1
+            _log 'INFO' "  Using manual entry: target='${target_path}', skip=${skip_this}"
+            used_cache=1
+            ((cache_hits++))
+        fi
 
-		# 检查自动缓存（仅当没有手动定义时）
-		if [[ ${used_cache} -eq 0 && -n "${cache_map[${rel_path}]}" ]]; then
-			local cached_entry="${cache_map[${rel_path}]}"
-			local cached_mtime="${cached_entry%%|*}"
-			local cached_target="${cached_entry#*|}"
+        # 检查自动缓存（仅当没有手动定义时）
+        if [[ ${used_cache} -eq 0 && -n "${cache_map[${rel_path}]}" ]]; then
+            local cached_entry="${cache_map[${rel_path}]}"
+            local cached_mtime="${cached_entry%%|*}"
+            local cached_target="${cached_entry#*|}"
 
-			if [[ "${cached_mtime}" == "${current_mtime}" ]]; then
-				# 缓存有效（Makefile 未修改）
-				target_path="${cached_target}"
-				used_cache=1
-				((cache_hits++))
-				_log 'INFO' "  Cache hit (mtime ${current_mtime}) -> ${target_path}"
-			else
-				# 缓存失效（Makefile 已修改）
-				_log 'INFO' "  Cache stale (mtime changed: ${cached_mtime} -> ${current_mtime})"
-				unset "cache_map[${rel_path}]"
-			fi
-		fi
+            if [[ "${cached_mtime}" == "${current_mtime}" ]]; then
+                # 缓存有效（Makefile 未修改）
+                target_path="${cached_target}"
+                used_cache=1
+                ((cache_hits++))
+                _log 'INFO' "  Cache hit (mtime ${current_mtime}) -> ${target_path}"
+            else
+                # 缓存失效（Makefile 已修改）
+                _log 'INFO' "  Cache stale (mtime changed: ${cached_mtime} -> ${current_mtime})"
+                unset "cache_map[${rel_path}]"
+            fi
+        fi
 
-		# 缓存未命中，重新解析
-		if [[ ${used_cache} -eq 0 ]]; then
-			((cache_misses++))
-			target_path="$(resolve_target_path "${abs_dir}" "${pkg_name}")"
-			if [[ -n "${target_path}" ]]; then
-				# 保存到缓存（不覆盖手动条目）
-				if [[ -z "${manual_map[${rel_path}]}" ]]; then
-					cache_map["${rel_path}"]="${current_mtime}|${target_path}"
-					_log 'INFO' "  Cached new entry: ${rel_path} -> ${target_path}"
-				fi
-			fi
-		fi
+        # 缓存未命中，重新解析
+        if [[ ${used_cache} -eq 0 ]]; then
+            ((cache_misses++))
+            target_path="$(resolve_target_path "${abs_dir}" "${pkg_name}")"
+            if [[ -n "${target_path}" ]]; then
+                # 保存到缓存（不覆盖手动条目）
+                if [[ -z "${manual_map[${rel_path}]}" ]]; then
+                    cache_map["${rel_path}"]="${current_mtime}|${target_path}"
+                    _log 'INFO' "  Cached new entry: ${rel_path} -> ${target_path}"
+                fi
+            fi
+        fi
 
-		if [[ -z "${target_path}" ]]; then
-			_log 'ERROR' "  Could not determine target path for ${pkg_name}, skipping."
-			((failed_links++))
-			continue
-		fi
+        if [[ -z "${target_path}" ]]; then
+            _log 'ERROR' "  Could not determine target path for ${pkg_name}, skipping."
+            ((failed_links++))
+            continue
+        fi
 
-		if [[ ${skip_this} -eq 1 ]]; then
-			_log 'INFO' "  Skipping symlink creation due to manual skip flag."
-			continue
-		fi
+        if [[ ${skip_this} -eq 1 ]]; then
+            _log 'INFO' "  Skipping symlink creation due to manual skip flag."
+            continue
+        fi
 
-		_log 'INFO' "  Target symlink path: ${target_path}"
+        _log 'INFO' "  Target symlink path: ${target_path}"
 
-		# 创建符号链接
-		if _create_relative_symlink "${abs_dir}" "${target_path}"; then
-			((successful_links++))
-		else
-			((failed_links++))
-		fi
-	done < <(find "${custom_dir}" -type d \( -name '.git' -o -name 'files' \) -prune -o \
-		-type d -exec test -f {}/Makefile \; -print -prune | sort)
+        # 创建符号链接
+        if _create_relative_symlink "${abs_dir}" "${target_path}"; then
+            ((successful_links++))
+        else
+            ((failed_links++))
+        fi
+    done < <(find "${custom_dir}" -type d \( -name '.git' -o -name 'files' \) -prune -o \
+        -type d -exec test -f {}/Makefile \; -print -prune | sort)
 
-	# 处理仅在缓存中存在的手动条目（没有 Makefile 的目录）
-	if [[ ${#manual_map[@]} -gt 0 ]]; then
-		_log 'INFO' 'Processing manual-only symlink entries...'
-		for rel_path in "${!manual_map[@]}"; do
-			# 跳过已在扫描中处理的条目
-			[[ -f "${custom_dir}/${rel_path}/Makefile" ]] && continue
+    # 处理仅在缓存中存在的手动条目（没有 Makefile 的目录）
+    if [[ ${#manual_map[@]} -gt 0 ]]; then
+        _log 'INFO' 'Processing manual-only symlink entries...'
+        for rel_path in "${!manual_map[@]}"; do
+            # 跳过已在扫描中处理的条目
+            [[ -f "${custom_dir}/${rel_path}/Makefile" ]] && continue
 
-			local abs_dir="${custom_dir}/${rel_path}"
-			local target_path="${manual_map[${rel_path}]}"
-			local skip_this=0
-			[[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_this=1
+            local abs_dir="${custom_dir}/${rel_path}"
+            local target_path="${manual_map[${rel_path}]}"
+            local skip_this=0
+            [[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_this=1
 
-			if [[ ! -d "${abs_dir}" ]]; then
-				_log 'WARN' "  Manual entry source directory not found: ${abs_dir}, skipping."
-				continue
-			fi
+            if [[ ! -d "${abs_dir}" ]]; then
+                _log 'WARN' "  Manual entry source directory not found: ${abs_dir}, skipping."
+                continue
+            fi
 
-			if [[ ${skip_this} -eq 1 ]]; then
-				_log 'INFO' "  Manual entry (skip): ${rel_path} -> ${target_path} (skipped)"
-				continue
-			fi
+            if [[ ${skip_this} -eq 1 ]]; then
+                _log 'INFO' "  Manual entry (skip): ${rel_path} -> ${target_path} (skipped)"
+                continue
+            fi
 
-			_log 'INFO' "  Manual entry: ${rel_path} -> ${target_path}"
+            _log 'INFO' "  Manual entry: ${rel_path} -> ${target_path}"
 
-			if _create_relative_symlink "${abs_dir}" "${target_path}"; then
-				((successful_links++))
-			else
-				((failed_links++))
-			fi
-		done
-	fi
+            if _create_relative_symlink "${abs_dir}" "${target_path}"; then
+                ((successful_links++))
+            else
+                ((failed_links++))
+            fi
+        done
+    fi
 
-	# 保存更新后的缓存
-	{
-		printf '# OpenWrt package symlink cache\n'
-		printf '# Format: relative_path|mtime|target_path|skip_flag  (mtime=manual for user-defined entries)\n'
-		for rel_path in "${!cache_map[@]}"; do
-			printf '%s|%s\n' "${rel_path}" "${cache_map[${rel_path}]}"
-		done
-		for rel_path in "${!manual_map[@]}"; do
-			local skip_part=""
-			[[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_part="|skip"
-			printf '%s|manual|%s%s\n' "${rel_path}" "${manual_map[${rel_path}]}" "${skip_part}"
-		done
-	} >"${cache_file}.tmp" && mv "${cache_file}.tmp" "${cache_file}"
+    # 保存更新后的缓存
+    {
+        printf '# OpenWrt package symlink cache\n'
+        printf '# Format: relative_path|mtime|target_path|skip_flag  (mtime=manual for user-defined entries)\n'
+        for rel_path in "${!cache_map[@]}"; do
+            printf '%s|%s\n' "${rel_path}" "${cache_map[${rel_path}]}"
+        done
+        for rel_path in "${!manual_map[@]}"; do
+            local skip_part=""
+            [[ "${manual_skip[${rel_path}]}" == "skip" ]] && skip_part="|skip"
+            printf '%s|manual|%s%s\n' "${rel_path}" "${manual_map[${rel_path}]}" "${skip_part}"
+        done
+    } >"${cache_file}.tmp" && mv "${cache_file}.tmp" "${cache_file}"
 
-	# 输出统计信息
-	_log 'INFO' "Cache saved with ${#cache_map[@]} auto + ${#manual_map[@]} manual entries"
-	_log 'INFO' '========================================'
-	_log 'INFO' 'Symlink creation completed.'
-	_log 'INFO' "Total packages processed: ${total_packages}"
-	_log 'INFO' "Cache hits: ${cache_hits}"
-	_log 'INFO' "Cache misses: ${cache_misses}"
-	_log 'INFO' "Manual entries processed: ${#manual_map[@]}"
-	_log 'INFO' "Successful symlinks: ${successful_links}"
-	_log 'INFO' "Failed symlinks: ${failed_links}"
+    # 输出统计信息
+    _log 'INFO' "Cache saved with ${#cache_map[@]} auto + ${#manual_map[@]} manual entries"
+    _log 'INFO' '========================================'
+    _log 'INFO' 'Symlink creation completed.'
+    _log 'INFO' "Total packages processed: ${total_packages}"
+    _log 'INFO' "Cache hits: ${cache_hits}"
+    _log 'INFO' "Cache misses: ${cache_misses}"
+    _log 'INFO' "Manual entries processed: ${#manual_map[@]}"
+    _log 'INFO' "Successful symlinks: ${successful_links}"
+    _log 'INFO' "Failed symlinks: ${failed_links}"
 }
 
 #######################################
@@ -700,16 +700,16 @@ create_symlinks() {
 #     -e '/LUCI_DEPENDS/,/^$/ { /uhttpd/d; }'
 #######################################
 modify_luci_collection() {
-	local makefile="$1"
-	shift
-	local sed_exprs=("$@")
+    local makefile="$1"
+    shift
+    local sed_exprs=("$@")
 
-	if [[ -f "${makefile}" ]]; then
-		printf 'Modifying %s...\n' "${makefile}"
-		sed -i "${sed_exprs[@]}" "${makefile}"
-	else
-		printf 'File %s does not exist.\n' "${makefile}" >&2
-	fi
+    if [[ -f "${makefile}" ]]; then
+        printf 'Modifying %s...\n' "${makefile}"
+        sed -i "${sed_exprs[@]}" "${makefile}"
+    else
+        printf 'File %s does not exist.\n' "${makefile}" >&2
+    fi
 }
 
 #######################################
@@ -723,17 +723,17 @@ modify_luci_collection() {
 # 修改默认 IP 地址为 192.168.0.1（避免与常见路由器冲突）
 BASE_FILE_CONFIG='package/base-files/files/bin/config_generate'
 if [[ -f "${BASE_FILE_CONFIG}" ]]; then
-	sed -i 's/192.168.1.1/192.168.0.1/g' "${BASE_FILE_CONFIG}"
+    sed -i 's/192.168.1.1/192.168.0.1/g' "${BASE_FILE_CONFIG}"
 else
-	printf 'File %s does not exist.\n' "${BASE_FILE_CONFIG}" >&2
+    printf 'File %s does not exist.\n' "${BASE_FILE_CONFIG}" >&2
 fi
 
 # 修改默认 Shell 从 ash 到 bash（提供更好的交互体验）
 PASSWD_FILE='package/base-files/files/etc/passwd'
 if [[ -f "${PASSWD_FILE}" ]]; then
-	sed -i 's/\/bin\/ash/\/bin\/bash/' "${PASSWD_FILE}"
+    sed -i 's/\/bin\/ash/\/bin\/bash/' "${PASSWD_FILE}"
 else
-	printf 'File %s does not exist.\n' "${PASSWD_FILE}" >&2
+    printf 'File %s does not exist.\n' "${PASSWD_FILE}" >&2
 fi
 
 #######################################
@@ -755,23 +755,23 @@ create_symlinks 'custom-packages'
 
 # LuCI 完整版：移除 attendedsysupgrade，修正 package-manager 格式
 modify_luci_collection 'feeds/luci/collections/luci/Makefile' \
-	-e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
+    -e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
 
 # LuCI 轻量版：移除 uhttpd，替换主题为 Argon
 modify_luci_collection 'feeds/luci/collections/luci-light/Makefile' \
-	-e '/LUCI_DEPENDS/,/^$/ { /uhttpd/d; s/luci-theme-bootstrap/luci-theme-argon/g; s/rpcd-mod-rrdns\s*\\/rpcd-mod-rrdns/g; }'
+    -e '/LUCI_DEPENDS/,/^$/ { /uhttpd/d; s/luci-theme-bootstrap/luci-theme-argon/g; s/rpcd-mod-rrdns\s*\\/rpcd-mod-rrdns/g; }'
 
 # LuCI Nginx 版：移除 attendedsysupgrade，替换主题为 Argon
 modify_luci_collection 'feeds/luci/collections/luci-nginx/Makefile' \
-	-e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-theme-bootstrap/luci-theme-argon/g; }'
+    -e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-theme-bootstrap/luci-theme-argon/g; }'
 
 # LuCI SSL 版：移除 attendedsysupgrade，修正 package-manager 格式
 modify_luci_collection 'feeds/luci/collections/luci-ssl/Makefile' \
-	-e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
+    -e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
 
 # LuCI SSL-OpenSSL 版：移除 attendedsysupgrade，修正 package-manager 格式
 modify_luci_collection 'feeds/luci/collections/luci-ssl-openssl/Makefile' \
-	-e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
+    -e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
 
 #######################################
 # 4. 修改 easyupdate.sh 脚本以支持自定义固件格式
@@ -786,20 +786,20 @@ modify_luci_collection 'feeds/luci/collections/luci-ssl-openssl/Makefile' \
 EASYUPDATE_FILE='custom-packages/sundaqiang/luci/applications/luci-app-easyupdate/root/usr/bin/easyupdate.sh'
 # shellcheck disable=SC2016
 if [[ -f "${EASYUPDATE_FILE}" ]]; then
-	printf "Modifying %s...\n" "${EASYUPDATE_FILE}"
-	sed -i -E \
-		-e '/sysupgrade\s+\$keepconfig\s*\$file/s/sysupgrade/sysupgrade -k/g' \
-		-e '/^\s*file/s/\$\{checkShaRet/\/tmp\/\$\{checkShaRet/g' \
-		-e '/Check\s+whether\s+EFI\s+firmware/,/^\s*fi/ {
-        /^\s+fi/a\    suffix='\''squashfs-sysupgrade.itb'\''
+    printf "Modifying %s...\n" "${EASYUPDATE_FILE}"
+    sed -i -E \
+        -e '/sysupgrade\s+\$keepconfig\s*\$file/s/sysupgrade/sysupgrade -k/g' \
+        -e '/^\s*file/s/\$\{checkShaRet/\/tmp\/\$\{checkShaRet/g' \
+        -e '/Check\s+whether\s+EFI\s+firmware/,/^\s*fi/ {
+        /^\s+fi/a\	suffix='\''squashfs-sysupgrade.itb'\''
         s/^/#/
       }' \
-		-e '/^\s*function\s+checkSha/,/^\s*\}/ {
+        -e '/^\s*function\s+checkSha/,/^\s*\}/ {
         s/img\.gz/\itb/
       }' \
-		"${EASYUPDATE_FILE}"
+        "${EASYUPDATE_FILE}"
 else
-	printf "File %s does not exist.\n" "${EASYUPDATE_FILE}" >&2
+    printf "File %s does not exist.\n" "${EASYUPDATE_FILE}" >&2
 fi
 
 #######################################
@@ -809,10 +809,10 @@ fi
 #######################################
 RUST_MAKEFILE='feeds/packages/lang/rust/Makefile'
 if [[ -f "${RUST_MAKEFILE}" ]]; then
-	printf 'Modifying %s...\n' "${RUST_MAKEFILE}"
-	sed -i 's/--set=llvm\.download-ci-llvm=true/--set=llvm.download-ci-llvm=false/' "${RUST_MAKEFILE}"
+    printf 'Modifying %s...\n' "${RUST_MAKEFILE}"
+    sed -i 's/--set=llvm\.download-ci-llvm=true/--set=llvm.download-ci-llvm=false/' "${RUST_MAKEFILE}"
 else
-	printf 'File %s does not exist.\n' "${RUST_MAKEFILE}" >&2
+    printf 'File %s does not exist.\n' "${RUST_MAKEFILE}" >&2
 fi
 
 #######################################
@@ -822,10 +822,10 @@ fi
 #######################################
 RESTORE_PACKAGES_FILE='files/usr/bin/restore-packages.sh'
 if [[ -f "${RESTORE_PACKAGES_FILE}" ]]; then
-	printf 'Setting execute permission on %s...\n' "${RESTORE_PACKAGES_FILE}"
-	chmod +x "${RESTORE_PACKAGES_FILE}"
+    printf 'Setting execute permission on %s...\n' "${RESTORE_PACKAGES_FILE}"
+    chmod +x "${RESTORE_PACKAGES_FILE}"
 else
-	printf 'File %s does not exist.\n' "${RESTORE_PACKAGES_FILE}" >&2
+    printf 'File %s does not exist.\n' "${RESTORE_PACKAGES_FILE}" >&2
 fi
 
 #######################################
@@ -836,11 +836,41 @@ fi
 #######################################
 DAE_MAKEFILE='custom-packages/packages/net/dae/Makefile'
 if [[ -f "${DAE_MAKEFILE}" ]]; then
-	printf "Modifying %s...\n" "${DAE_MAKEFILE}"
-	sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=1.1.0_rc1/" "${DAE_MAKEFILE}"
-	sed -i "s/PKG_SOURCE:=.*/PKG_SOURCE:=\$(PKG_NAME)-1.1.0rc1.zip/" "${DAE_MAKEFILE}"
-	sed -i "s#PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://github.com/daeuniverse/dae/releases/download/v1.1.0rc1/dae-full-src.zip?#" "${DAE_MAKEFILE}"
-	sed -i "s/PKG_HASH:=.*/PKG_HASH:=726a049813a4d5b800c441ea76ff0ce1846596c180fba0e8ec920a129b3b6e0a/" "${DAE_MAKEFILE}"
+    printf "Modifying %s...\n" "${DAE_MAKEFILE}"
+    sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=1.1.0_rc1/" "${DAE_MAKEFILE}"
+    sed -i "s/PKG_SOURCE:=.*/PKG_SOURCE:=\$(PKG_NAME)-1.1.0rc1.zip/" "${DAE_MAKEFILE}"
+    sed -i "s#PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://github.com/daeuniverse/dae/releases/download/v1.1.0rc1/dae-full-src.zip?#" "${DAE_MAKEFILE}"
+    sed -i "s/PKG_HASH:=.*/PKG_HASH:=726a049813a4d5b800c441ea76ff0ce1846596c180fba0e8ec920a129b3b6e0a/" "${DAE_MAKEFILE}"
 else
-	printf "File %s does not exist.\n" "${DAE_MAKEFILE}" >&2
+    printf "File %s does not exist.\n" "${DAE_MAKEFILE}" >&2
+fi
+
+#######################################
+# 7. 修复 Makefile 依赖问题。
+#
+# 修复 Makefile 中的依赖关系，将 +rblibtorrent 替换为 +libtorrent-rasterbar。
+#######################################
+QBIT_APP_PATH="custom-packages/qbittorrent"
+if [[ -d "${QBIT_APP_PATH}" ]]; then
+    QBIT_MAKEFILE="${QBIT_APP_PATH}/qbittorrent/Makefile"
+    if [[ -f "$QBIT_MAKEFILE" ]]; then
+        # 如果已经有 +libtorrent-rasterbar 则什么都不做
+        if grep -q '+libtorrent-rasterbar' "$QBIT_MAKEFILE"; then
+            echo "Dependency +libtorrent-rasterbar already present."
+        else
+            # 将旧的 +rblibtorrent 替换为正确的包名
+            if grep -q '+rblibtorrent' "$QBIT_MAKEFILE"; then
+                sed -i 's/+rblibtorrent/+libtorrent-rasterbar/g' "$QBIT_MAKEFILE"
+                echo "Replaced +rblibtorrent with +libtorrent-rasterbar in $QBIT_MAKEFILE"
+            else
+                # 若连旧的都没有，直接在 DEPENDS 行末尾追加
+                sed -i '/define Package\/qbittorrent/,/^endef/{
+                    /DEPENDS:=/ s/$/ +libtorrent-rasterbar/
+                }' "$QBIT_MAKEFILE"
+                echo "Added +libtorrent-rasterbar to DEPENDS in $QBIT_MAKEFILE"
+            fi
+        fi
+    fi
+else
+    echo "Dir ${QBIT_APP_PATH} does not exist." >&2
 fi

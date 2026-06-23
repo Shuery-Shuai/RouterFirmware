@@ -1,142 +1,142 @@
 /* 内容容器 - 清除原有样式 */
 /* #content {
-	margin: 0;
-	border: none;
-	padding: 0;
+    margin: 0;
+    border: none;
+    padding: 0;
 } */
 
 /* 搜索容器样式 */
 .search-container {
-	margin-bottom: 20px;
+    margin-bottom: 20px;
 }
 
 .search-input {
-	width: 100%;
-	padding: 10px;
-	font-size: 16px;
-	border: 1px solid #ddd;
-	border-radius: 4px;
-	box-sizing: border-box;
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
 }
 
 .search-stats {
-	color: #666;
-	font-size: 14px;
-	margin-top: 10px;
+    color: #666;
+    font-size: 14px;
+    margin-top: 10px;
 }
 
 /* 加载和错误提示 */
 .loading {
-	text-align: center;
-	color: #999;
-	padding: 20px;
+    text-align: center;
+    color: #999;
+    padding: 20px;
 }
 
 .error {
-	color: #c33;
-	background: #fdd;
-	padding: 15px;
-	border-radius: 4px;
-	margin: 20px 0;
+    color: #c33;
+    background: #fdd;
+    padding: 15px;
+    border-radius: 4px;
+    margin: 20px 0;
 }
 
 /* 表格容器 - 响应式处理 */
 .table-wrapper {
-	overflow-x: auto;
-	-webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* 表格样式 */
 table {
-	width: 100%;
-	border-collapse: collapse;
-	min-width: 100%;
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 100%;
   margin-bottom: 0;
 }
 
 th, td {
   padding: 10px;
-	text-align: left;
-	border-bottom: 1px solid #ddd;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
   color: #000;
 }
 
 th {
-	background: #f5f5f5;
-	font-weight: bold;
-	user-select: none;
+    background: #f5f5f5;
+    font-weight: bold;
+    user-select: none;
 }
 
 /* 可排序的表头 */
 th[onclick] {
-	cursor: pointer;
-	transition: background-color 0.2s;
+    cursor: pointer;
+    transition: background-color 0.2s;
 }
 
 th[onclick]:hover {
-	background: #e8e8e8;
+    background: #e8e8e8;
 }
 
 tr:hover {
-	background: #f9f9f9;
+    background: #f9f9f9;
 }
 
 /* 链接样式 */
 a {
-	color: #0066cc;
-	text-decoration: none;
+    color: #0066cc;
+    text-decoration: none;
 }
 
 a:hover {
-	text-decoration: underline;
+    text-decoration: underline;
 }
 
 /* 空状态 */
 .empty-state {
-	text-align: center;
-	color: #999;
-	padding: 40px;
+    text-align: center;
+    color: #999;
+    padding: 40px;
 }
 
 /* 分页控制 */
 .pagination {
-	margin-top: 20px;
-	text-align: center;
+    margin-top: 20px;
+    text-align: center;
 }
 
 .pagination button {
-	padding: 5px 10px;
-	margin: 0 2px;
-	cursor: pointer;
-	border: 1px solid #ddd;
-	background: #f9f9f9;
-	border-radius: 3px;
+    padding: 5px 10px;
+    margin: 0 2px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+    border-radius: 3px;
 }
 
 .pagination button:hover {
-	background: #eee;
+    background: #eee;
 }
 
 /* SHA 列样式 - 支持复制按钮 */
 .sh {
-	position: relative;
-	white-space: nowrap;
+    position: relative;
+    white-space: nowrap;
 }
 
 .copy-btn {
-	margin-left: 5px;
-	cursor: pointer;
-	user-select: none;
+    margin-left: 5px;
+    cursor: pointer;
+    user-select: none;
 }
 
 .copy-btn:hover {
-	opacity: 0.7;
+    opacity: 0.7;
 }
 
 /* 路径列样式：允许换行，避免表格过宽，并支持悬浮查看完整路径 */
 .p {
-	word-break: break-all;
-	max-width: 300px;
-	cursor: help;
+    word-break: break-all;
+    max-width: 300px;
+    cursor: help;
 }
 
