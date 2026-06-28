@@ -45,6 +45,10 @@ readonly SCRIPT_DIR
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
+readonly GIT_QUICK_TIMEOUT=10
+readonly GIT_NETWORK_TIMEOUT=180
+readonly GIT_CLEAN_TIMEOUT=300
+
 #######################################
 # 获取目标分支/标签（内部函数）
 #
@@ -84,13 +88,153 @@ _get_target_ref() {
 }
 
 #######################################
+# 获取当前 Git 引用（内部函数）
+#
+# Outputs:
+#   当前分支名、标签名或空字符串
+#######################################
+_get_current_ref() {
+  timeout 3 git symbolic-ref --short HEAD 2>/dev/null ||
+    timeout 3 git describe --tags --exact-match HEAD 2>/dev/null || echo ""
+}
+
+#######################################
+# 拉取指定分支引用（内部函数）
+#
+# Arguments:
+#   $1 - 分支名
+#######################################
+_fetch_branch_ref() {
+  local target="$1"
+
+  timeout "${GIT_NETWORK_TIMEOUT}" git fetch --prune origin \
+    "+refs/heads/${target}:refs/remotes/origin/${target}" >/dev/null 2>&1
+}
+
+#######################################
+# 拉取指定标签引用（内部函数）
+#
+# Arguments:
+#   $1 - 标签名
+#######################################
+_fetch_tag_ref() {
+  local target="$1"
+
+  timeout "${GIT_NETWORK_TIMEOUT}" git fetch --force origin \
+    "refs/tags/${target}:refs/tags/${target}" >/dev/null 2>&1
+}
+
+#######################################
+# 更新目标引用（内部函数）
+#
+# 浅克隆或单分支克隆通常只配置了 master/main 的 fetch 规则。
+# 切换 release 标签前必须显式拉取目标标签，否则本地 checkout 会找不到该标签。
+#
+# Arguments:
+#   $1 - 目标引用（分支名或标签名）
+#######################################
+_fetch_target_ref() {
+  local target="$1"
+
+  log INFO "更新目标引用: ${target}"
+
+  if [[ "${target}" == v* ]]; then
+    if _fetch_tag_ref "${target}"; then
+      log DEBUG "已获取标签 ${target}"
+      return 0
+    fi
+    if _fetch_branch_ref "${target}"; then
+      log DEBUG "已获取远端分支 origin/${target}"
+      return 0
+    fi
+  else
+    if _fetch_branch_ref "${target}"; then
+      log DEBUG "已获取远端分支 origin/${target}"
+      return 0
+    fi
+    if _fetch_tag_ref "${target}"; then
+      log DEBUG "已获取标签 ${target}"
+      return 0
+    fi
+  fi
+
+  log WARN "精确获取 ${target} 失败，尝试获取全部标签"
+  if timeout "${GIT_NETWORK_TIMEOUT}" git fetch --tags origin >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log ERROR "无法从 origin 获取 ${target}"
+  return 1
+}
+
+#######################################
+# 切换到已存在的目标引用（内部函数）
+#
+# Arguments:
+#   $1 - 目标引用（分支名或标签名）
+#######################################
+_checkout_target_ref() {
+  local target="$1"
+
+  if timeout 3 git show-ref --verify --quiet "refs/tags/${target}"; then
+    timeout "${GIT_QUICK_TIMEOUT}" git checkout "${target}"
+    return
+  fi
+
+  if timeout 3 git show-ref --verify --quiet "refs/heads/${target}"; then
+    timeout "${GIT_QUICK_TIMEOUT}" git checkout "${target}"
+    return
+  fi
+
+  if timeout 3 git show-ref --verify --quiet "refs/remotes/origin/${target}"; then
+    timeout "${GIT_QUICK_TIMEOUT}" git checkout -B "${target}" "origin/${target}"
+    return
+  fi
+
+  timeout "${GIT_QUICK_TIMEOUT}" git checkout "${target}"
+}
+
+#######################################
+# 更新当前分支（内部函数）
+#
+# 标签不可变，不执行 pull；分支使用 ff-only 避免意外创建 merge commit。
+#######################################
+_pull_current_branch() {
+  local branch
+
+  branch=$(timeout 3 git symbolic-ref --short HEAD 2>/dev/null || echo "")
+  [[ -z "${branch}" ]] && return 0
+
+  log INFO "更新分支 ${branch}"
+  timeout "${GIT_NETWORK_TIMEOUT}" git pull --ff-only || log WARN "git pull --ff-only 失败"
+}
+
+#######################################
+# 输出引用诊断信息（内部函数）
+#
+# Arguments:
+#   $1 - 目标引用（分支名或标签名）
+#######################################
+_log_ref_diagnostics() {
+  local target="$1"
+
+  log ERROR "当前位置: $(pwd)"
+  log ERROR "当前提交: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  log ERROR "fetch 规则: $(git config --get-all remote.origin.fetch 2>/dev/null || echo unknown)"
+  log ERROR "本地分支: $(git branch -a 2>/dev/null | sed -n '1,20p')"
+  log ERROR "本地匹配标签: $(git tag -l "${target}*" 2>/dev/null | sed -n '1,20p')"
+  log ERROR "远端匹配标签: $(timeout 30 git ls-remote --tags origin "refs/tags/${target}*" 2>/dev/null | sed -n '1,20p' || echo "查询失败")"
+}
+
+#######################################
 # 切换到目标版本（内部函数）
 #
 # 智能切换 Git 版本，处理以下场景:
 #   1. 已在目标分支：执行 git pull 更新
 #   2. 已在目标标签：无需操作（标签不变）
 #   3. 在其他版本：切换到目标版本
-#   4. 切换失败：清理工作区后重试
+#   4. 本地缺少目标引用：从 origin 精确拉取后重试
+#   5. 工作区阻塞切换：清理工作区后兜底重试
 #
 # 使用 timeout 命令防止 Git 操作挂起（网络问题或仓库损坏）。
 #
@@ -131,8 +275,7 @@ _switch_to_target() {
   #   2. 标签名 (git describe --tags --exact-match)
   #   3. 未知状态（分离头指针或其他）
   #######################################
-  current_ref=$(timeout 3 git symbolic-ref --short HEAD 2>/dev/null ||
-    timeout 3 git describe --tags --exact-match HEAD 2>/dev/null || echo "")
+  current_ref=$(_get_current_ref)
 
   log DEBUG "当前引用: ${current_ref:-未知}, 目标: ${target}"
 
@@ -145,8 +288,8 @@ _switch_to_target() {
   if [[ "${current_ref}" == "${target}" ]]; then
     if timeout 3 git symbolic-ref --short HEAD >/dev/null 2>&1; then
       # 在分支上，更新代码
-      log INFO "在分支 ${target}，执行 git pull"
-      timeout 30 git pull || log WARN "git pull 失败"
+      log INFO "在分支 ${target}"
+      _pull_current_branch
     else
       # 在标签上，无需更新
       log INFO "在标签 ${target}，无需更新"
@@ -157,29 +300,31 @@ _switch_to_target() {
   #######################################
   # 场景 2: 需要切换版本
   #
-  # 尝试直接切换，如果失败则清理工作区后重试。
-  # 清理操作包括:
-  #   - git clean -xfd : 删除未跟踪的文件和目录
-  #   - git restore .  : 恢复工作区文件到 HEAD 状态
+  # 尝试直接切换；如果失败，先拉取目标引用后重试。
+  # 只有仍然失败时，才清理工作区做兜底重试。
   #######################################
   log INFO "切换: ${current_ref:-unknown} → ${target}"
 
-  if ! timeout 10 git checkout "${target}" 2>/dev/null; then
-    # 切换失败，清理工作区
-    log WARN "切换失败，清理后重试"
-    timeout 10 git clean -xfd || log ERROR "git clean 失败"
-    timeout 10 git restore . || log ERROR "git restore 失败"
+  if ! _checkout_target_ref "${target}" >/dev/null 2>&1; then
+    log WARN "本地无法直接切换到 ${target}，尝试从 origin 更新引用"
+    _fetch_target_ref "${target}" || log ERROR "目标引用更新失败"
 
-    # 重试切换
-    if ! timeout 10 git checkout "${target}" 2>&1; then
-      # 仍然失败，记录详细错误信息后退出
-      log FATAL "无法切换到 ${target}"
-      log ERROR "当前位置: $(pwd)"
-      log ERROR "可用分支/标签: $(git branch -a 2>/dev/null | head -5)"
-      exit 1
+    if ! _checkout_target_ref "${target}" 2>&1; then
+      # 仍然失败，可能是工作区文件冲突，最后才清理。
+      log WARN "切换仍失败，清理工作区后重试"
+      timeout "${GIT_CLEAN_TIMEOUT}" git clean -xfd || log ERROR "git clean 失败"
+      timeout "${GIT_QUICK_TIMEOUT}" git restore . || log ERROR "git restore 失败"
+      _fetch_target_ref "${target}" || log ERROR "目标引用更新失败"
+
+      if ! _checkout_target_ref "${target}" 2>&1; then
+        log FATAL "无法切换到 ${target}"
+        _log_ref_diagnostics "${target}"
+        exit 1
+      fi
     fi
   fi
 
+  _pull_current_branch
   log INFO "成功切换到 ${target}"
 }
 
