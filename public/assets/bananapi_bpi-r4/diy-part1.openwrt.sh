@@ -310,19 +310,19 @@ clone_repo 'https://github.com/lisaac/luci-app-diskman' \
     'custom-packages/luci-app-diskman'
 
 # 风扇控制应用
-clone_repo 'https://github.com/rockjake/luci-app-fancontrol.git' \
+clone_repo 'https://github.com/rockjake/luci-app-fancontrol' \
     'main' \
     '--depth=1' \
     'custom-packages/luci-app-fancontrol'
 
 # FanXpert 风扇控制应用
-clone_repo 'https://github.com/Shuery-Shuai/luci-app-fanxpert.git' \
+clone_repo 'https://github.com/Shuery-Shuai/LuciFanXpert' \
     'main' \
     '--depth=1' \
     'custom-packages/luci-app-fanxpert'
 
 # Lucky 网络工具
-clone_repo 'https://github.com/gdy666/luci-app-lucky.git' \
+clone_repo 'https://github.com/gdy666/luci-app-lucky' \
     'main' \
     '--depth=1' \
     'custom-packages/luci-app-lucky'
@@ -340,7 +340,7 @@ clone_repo 'https://github.com/zhengmz/luci-app-zerotier' \
     'custom-packages/luci-app-zerotier'
 
 # Argon 主题
-clone_repo 'https://github.com/jerrykuku/luci-theme-argon.git' \
+clone_repo 'https://github.com/jerrykuku/luci-theme-argon' \
     'master' \
     '--depth=1' \
     'custom-packages/luci-theme-argon'
