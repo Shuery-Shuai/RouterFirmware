@@ -135,16 +135,28 @@ main() {
   fi
 
   #######################################
-  # 复制 DIY 脚本
+  # 复制 DIY 脚本及其依赖
   #
   # diy-part1.sh: 通用脚本，在 feeds update 之前执行
   # diy-part2.sh: 固件特定脚本，在 feeds install 之后执行
   #######################################
+  local libs_dir="${src_dir}/assets/common/scripts/libs"
+  local mods_dir="${src_dir}/assets/common/scripts/mods"
+  local libs_device_dir="${src_dir}/assets/${profile}/scripts/libs-${profile}"
+  local mods_device_dir="${src_dir}/assets/${profile}/scripts/mods-${profile}"
   local diy1="${src_dir}/assets/${profile}/diy-part1.${firmware}.sh"
   local diy2="${src_dir}/assets/${profile}/diy-part2.${firmware}.sh"
+  require_dir "${libs_dir}" "libs 目录不存在"
+  require_dir "${mods_dir}" "mods 目录不存在"
+  require_dir "${libs_device_dir}" "libs-${profile} 目录不存在"
+  require_dir "${mods_device_dir}" "mods-${profile} 目录不存在"
   require_file "${diy1}" "diy-part1.${firmware}.sh 不存在"
   require_file "${diy2}" "diy-part2.${firmware}.sh 不存在"
 
+  cp -r "${libs_dir}"/*.sh "${dst_dir}/scripts/libs/"
+  cp -r "${mods_dir}"/*.sh "${dst_dir}/scripts/mods/"
+  cp -r "${libs_device_dir}"/*.sh "${dst_dir}/scripts/libs-${profile}/"
+  cp -r "${mods_device_dir}"/*.sh "${dst_dir}/scripts/mods-${profile}/"
   cp "${diy1}" "${dst_dir}/diy-part1.sh"
   cp "${diy2}" "${dst_dir}/diy-part2.sh"
   log INFO "已复制: DIY 脚本"
