@@ -9,6 +9,15 @@
 #   - 应用差异配置文件 (diff.config)
 #   - 可选地运行交互式配置工具 (menuconfig)
 #
+# 流程：
+#   1. make defconfig → 产生默认 .config
+#   2. 备份为 .config.defconfig（基线）
+#   3. 生成 customfeeds.list
+#   4. 如果 diff.config 存在 → 合并至 .config → yes '' | make oldconfig 更新
+#   5. 如果 ask_menuconfig == true → 运行 make menuconfig
+#   6. 基于 .config.defconfig 基线生成完整差异文件 diff.config
+#   7. 清理临时文件
+#
 # 用法:
 #   ./config-management.sh <source_dir> <firmware> <version> <profile> [ask-menuconfig]
 #   ./config-management.sh [options]
@@ -130,6 +139,10 @@ main() {
   log INFO "生成默认配置"
   make defconfig
 
+  # 备份 config 为基线（.config.defconfig）
+  cp .config .config.defconfig
+  log INFO "已保存 defconfig 基线到 .config.defconfig"
+
   # 从生成的 .config 中提取架构信息
   # 这些信息用于构建自定义软件包源的 URL
   log INFO "生成 customfeeds.list"
@@ -162,29 +175,54 @@ EOF
     log WARN "无法提取 board/arch 信息，跳过 customfeeds.list"
   fi
 
-  # 应用差异配置文件（如果存在）
-  # diff.config 通常只包含修改的配置项，而非完整配置
+  #######################################
+  # 应用差异配置文件（diff.config）
+  #
+  # 如果当前目录下存在 diff.config，则将其与 .config 合并，
+  # 并使用非交互方式更新配置，使其与当前源码树一致。
+  #
+  # 合并逻辑：
+  #   1. 使用 awk 读取 diff.config，构建新配置项的映射表。
+  #   2. 逐行处理 .config，若某配置项在 diff.config 中有定义，则替换为新值；
+  #      否则保留原值。
+  #   3. 追加 diff.config 中独有的新配置项（例如新增包的选项）。
+  #
+  # 更新配置（解决依赖和过时问题）：
+  #   - 优先使用 `scripts/config/conf --olddefconfig` 完全无交互更新。
+  #   - 若不可用，降级为 `yes '' | make oldconfig`（空行选择默认值，可能有风险）。
+  #
+  # Globals:
+  #   None
+  #
+  # Arguments:
+  #   None
+  #
+  # Outputs:
+  #   日志信息到 stderr
+  #
+  # Returns:
+  #   0 - 成功应用（即使 diff.config 不存在也返回 0）
+  #   非0 - 合并或更新过程中出现严重错误
+  #######################################
   if [[ -f "diff.config" ]]; then
     log INFO "应用 diff.config"
-    log DEBUG "合并差异配置到 .config"
 
-    # 使用 awk 智能合并配置：
-    #   - 读取 diff.config 中的新配置项
-    #   - 遍历 .config，替换已存在的项
-    #   - 在末尾追加 diff.config 中的新项
+    # 使用 awk 将 diff.config 合并到当前 .config
+    # 注意：OpenWrt 没有独立的 scripts/config 脚本（它是一个目录），
+    # 因此直接使用 awk 进行文本级合并，再通过 conf 工具同步依赖。
     awk '
       # 第一遍：读取 diff.config，构建新配置映射表
       NR==FNR {
         if (/^# CONFIG_.* is not set/) {
-          # 处理禁用的配置项 (# CONFIG_XXX is not set)
+          # 处理禁用的配置项，格式：# CONFIG_XXX is not set
           split($0, a, " "); newconf[a[2]] = $0;
         } else if (/^CONFIG_/) {
-          # 处理启用的配置项 (CONFIG_XXX=y/m/...)
+          # 处理启用的配置项，格式：CONFIG_XXX=value
           split($0, a, "="); newconf[a[1]] = $0;
         }
         next;
       }
-      # 第二遍：处理 .config
+      # 第二遍：处理原有的 .config
       {
         if (/^CONFIG_/) {
           split($0, a, "="); key = a[1];
@@ -194,112 +232,121 @@ EOF
           # 非配置行（注释、空行等）直接输出
           print; next;
         }
-        # 如果该配置项在 diff.config 中有新值，使用新值
+        # 若该键在 diff.config 中有新值，则使用新值
         if (key in newconf) {
           print newconf[key]; delete newconf[key];
         } else {
           print;
         }
       }
-      # 处理完后，追加 diff.config 中剩余的新配置项
+      # 追加 diff.config 中剩余的新配置项（.config 中没有的）
       END {
         for (key in newconf) print newconf[key];
       }
     ' diff.config .config >.config.new && mv .config.new .config
-    log INFO "差异配置应用完成"
+
+    # 非交互更新配置，忽略 oldconfig 的返回码（它有时会非0）
+    log INFO "同步配置 (oldconfig)..."
+    yes '' 2>/dev/null | make oldconfig >/dev/null 2>&1 || {
+      log WARN "make oldconfig exited with code $? (this may be harmless)"
+    }
+
+    log INFO "差异配置应用完成，已同步至当前源码"
   else
-    log DEBUG "diff.config 不存在，跳过"
+    log DEBUG "diff.config 不存在，跳过差异应用"
   fi
 
   # 可选的交互式配置
-  # 允许用户通过 menuconfig 手动调整配置
+  # 允许用户通过 menuconfig 手动调整配置，15 秒超时自动跳过
   if [[ "${ask_menuconfig}" == "true" ]]; then
-    read -rp "运行 make menuconfig? [Y/n] " answer
+    read -t 60 -rp "运行 make menuconfig? [Y/n] " answer || answer="n"
     case "${answer,,}" in
     y | yes | "")
-      # 备份当前配置
-      cp .config .config.old
-      log INFO "已备份当前配置到 .config.old"
-
       # 运行 menuconfig
       make menuconfig
-
-      # 比较配置变化并生成差异文件
-      if [[ -f .config.old ]]; then
-        # 计算项目根目录的绝对路径
-        local project_root
-        project_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
-        local diff_output="${project_root}/public/assets/${profile}/${firmware}.${version}.diff.config"
-
-        log INFO "比较配置变化"
-
-        # 使用 scripts/diffconfig.sh 生成差异配置
-        if [[ -f scripts/diffconfig.sh ]]; then
-          # 确保目标目录存在
-          mkdir -p "$(dirname "${diff_output}")"
-
-          # 生成临时差异文件
-          local temp_diff="${diff_output}.tmp"
-          ./scripts/diffconfig.sh .config.old .config >"${temp_diff}"
-
-          # 检查是否有变化
-          local changes_count
-          changes_count=$(grep -c '^CONFIG_' "${temp_diff}" 2>/dev/null || echo "0")
-
-          if [[ ${changes_count} -eq 0 ]]; then
-            log INFO "配置无变化"
-            rm -f "${temp_diff}"
-          else
-            log INFO "配置变化数量: ${changes_count}"
-
-            # 检查是否已存在 diff 文件
-            if [[ -f "${diff_output}" ]]; then
-              log WARN "差异配置文件已存在"
-              log INFO "显示对比（左：现有 | 右：新生成）："
-              echo "========================================"
-
-              # 使用 diff -y 进行并排对比，如果可用则使用 colordiff
-              if command -v colordiff &>/dev/null; then
-                diff -y --width=160 --suppress-common-lines "${diff_output}" "${temp_diff}" | colordiff || true
-              else
-                diff -y --width=160 --suppress-common-lines "${diff_output}" "${temp_diff}" || true
-              fi
-
-              echo "========================================"
-
-              # 询问是否替换
-              read -rp "是否替换现有差异配置文件? [y/N] " replace_answer
-              case "${replace_answer,,}" in
-              y | yes)
-                mv "${temp_diff}" "${diff_output}"
-                log INFO "已替换差异配置文件: ${diff_output}"
-                ;;
-              *)
-                rm -f "${temp_diff}"
-                log INFO "保留现有差异配置文件"
-                ;;
-              esac
-            else
-              # 文件不存在，显示新配置变化并直接保存
-              log INFO "配置变化详情："
-              cat "${temp_diff}"
-
-              mv "${temp_diff}" "${diff_output}"
-              log INFO "已生成差异配置: ${diff_output}"
-            fi
-          fi
-        else
-          log WARN "未找到 scripts/diffconfig.sh，跳过差异生成"
-        fi
-
-        # 清理备份文件
-        rm -f .config.old
-      fi
+      log INFO "menuconfig 完成"
       ;;
     n | no) log INFO "跳过 menuconfig" ;;
     *) log WARN "无效输入，跳过" ;;
     esac
   fi
+
+  # 基于基线生成完整差异文件（自包含的定制快照）
+  if [[ -f .config.defconfig ]]; then
+    # 计算项目根目录的绝对路径
+    local project_root
+    project_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    local diff_output="${project_root}/public/assets/${profile}/configs/${firmware}.${version}.diff.config"
+
+    log INFO "比较配置变化"
+
+    # 使用 scripts/diffconfig.sh 生成差异配置
+    if [[ -f scripts/diffconfig.sh ]]; then
+      # 确保目标目录存在
+      mkdir -p "$(dirname "${diff_output}")"
+
+      # 生成临时差异文件
+      local temp_diff="${diff_output}.tmp"
+      ./scripts/diffconfig.sh .config.defconfig .config >"${temp_diff}"
+
+      # 检查是否有变化
+      local changes_count
+      changes_count=$(grep -c '^CONFIG_' "${temp_diff}" 2>/dev/null || echo "0")
+
+      if [[ ${changes_count} -eq 0 ]]; then
+        log INFO "配置与默认一致，无差异"
+        rm -f "${temp_diff}" "${diff_output}"
+      else
+        log INFO "生成完整差异文件 (${changes_count} 行)"
+        # 如果已存在旧 diff，询问是否替换
+        if [[ -f "${diff_output}" ]]; then
+          log WARN "差异文件已存在：${diff_output}"
+          echo "差异对比（左：现有 | 右：新生成）："
+          echo "========================================"
+
+          # 使用 diff -y 进行并排对比，如果可用则使用 colordiff
+          if command -v colordiff &>/dev/null; then
+            diff -y --width=160 --suppress-common-lines "${diff_output}" "${temp_diff}" | colordiff || true
+          else
+            diff -y --width=160 --suppress-common-lines "${diff_output}" "${temp_diff}" || true
+          fi
+
+          echo "========================================"
+
+          # 询问是否替换
+          read -t 60 -rp "是否替换现有差异配置文件? [y/N] " replace_answer || replace_answer="y"
+          case "${replace_answer,,}" in
+          y | yes)
+            mv "${temp_diff}" "${diff_output}"
+            log INFO "已替换差异配置文件: ${diff_output}"
+            ;;
+          *)
+            rm -f "${temp_diff}"
+            log INFO "保留现有差异配置文件"
+            ;;
+          esac
+        else
+          # 文件不存在，显示新配置变化并直接保存
+          log INFO "配置变化详情："
+          cat "${temp_diff}"
+
+          mv "${temp_diff}" "${diff_output}"
+          log INFO "已生成差异配置: ${diff_output}"
+        fi
+
+      fi
+    else
+      log WARN "未找到 scripts/diffconfig.sh，跳过差异生成"
+    fi
+
+    # 清理备份文件
+    rm -f .config.defconfig
+  else
+    log WARN "未找到 .config.defconfig，无法生成差异配置"
+  fi
+
+  # 清理临时文件
+  rm -f .config.defconfig .config.old
 
   log INFO "配置管理完成"
 }

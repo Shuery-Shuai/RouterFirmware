@@ -53,8 +53,16 @@ set_dae_version() {
     local makefile="${3:-feeds/packages/net/dae/Makefile}"
 
     if [[ -z "${raw_version}" || -z "${hash}" ]]; then
-        log ERROR "Usage: set_dae_version <version> <hash> [makefile_path]"
+        log ERROR "Usage: set_dae_version <version> [hash|auto] [makefile_path]"
         return 1
+    fi
+
+    # 自动计算哈希（如果未提供或为 "auto"）
+    if [[ -z "${hash}" || "${hash}" == "auto" ]]; then
+        log INFO "Auto-computing SHA256 for dae ${raw_version}..."
+        local url="https://github.com/daeuniverse/dae/releases/download/v${raw_version}/dae-full-src.zip"
+        hash=$(download_and_hash "${url}") || return 1
+        log INFO "Computed hash: ${hash}"
     fi
 
     if [[ ! -f "${makefile}" ]]; then
@@ -69,10 +77,10 @@ set_dae_version() {
     pkg_version=$(normalize_pkg_version "${raw_version}")
 
     # 生成 PKG_SOURCE: dae-{raw_version}.zip
-    local pkg_source="\$(PKG_NAME)-${raw_version}.zip"
+    local pkg_source="dae-full-src.zip"
 
     # 生成 PKG_SOURCE_URL
-    local pkg_source_url="https://github.com/daeuniverse/dae/releases/download/v${raw_version}/dae-full-src.zip"
+    local pkg_source_url="https://github.com/daeuniverse/dae/releases/download/v${raw_version}/"
 
     log INFO "Setting dae version to ${raw_version} (PKG_VERSION=${pkg_version}) in ${makefile}..."
     log INFO "  PKG_SOURCE: ${pkg_source}"

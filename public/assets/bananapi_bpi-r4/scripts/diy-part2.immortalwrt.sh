@@ -1,6 +1,6 @@
 #!/bin/bash
 # 文件: bananapi_bpi-r4/scripts/diy-part2.immortalwrt.sh
-# 用途: ImmortalWrt 构建第二阶段 - 在 feeds install 后执行
+# 用途: ImmortalWrt 构建第二阶段 - 在 feeds install 前执行
 #       1. 修改系统默认配置
 #       2. 创建符号链接
 #       3. 修补 LuCI 集合
@@ -28,28 +28,32 @@ source "${SCRIPT_DIR}/mods-bananapi_bpi-r4/index.sh"
 
 # ===== 执行第二阶段修改 =====
 
-set_default_ip
-set_default_shell
+# 先重命名以避免冲突
+rename_qbittorrent
 
 create_symlinks 'custom-packages'
 
+set_default_ip
+set_default_shell
+
 apply_luci_collection_patches
 
+
 # ImmortalWrt 版 easyupdate 补丁
-patch_easyupdate_immortalwrt
+patch_easyupdate 'immortalwrt'
 
 modify_rust_build_config
 
 ensure_exec_permission 'files/usr/bin/restore-packages.sh'
 
 # 固定 dae 版本
-set_dae_version "1.1.0rc1" "726a049813a4d5b800c441ea76ff0ce1846596c180fba0e8ec920a129b3b6e0a"
+set_dae_version "2.0.0rc1" "d149f9c35fcc95d3a8c2f001294468833ba52d7b060d146d2a509257e0c96504"
 
-# ImmortalWrt 专用：重命名 qBittorrent 并修复依赖
-patch_qbittorrent_immortalwrt
+# 修复 qbittorrent 依赖
+fix_qbittorrent_deps
 
 # 固定 fan2go 版本
-set_fan2go_version "0.13.0" "d693bc3ed4c43c8f120433ff17cecca9b98def829e031759373e6ff1ed8def61"
+set_fan2go_version "0.15.0" "0bf10cd608c0a2fa55b9237267a7ff2c835697b77110a8d53a1711c07a067c0c"
 
 # 修复 libnl-tiny 编译警告
 fix_libnl_tiny_compile

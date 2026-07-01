@@ -1,26 +1,28 @@
 #!/bin/bash
+# 文件: common/scripts/mods/index.sh
+# 用途: 加载 common/scripts/mods/ 下的所有独立修改脚本（定义函数，不执行）
+# 用法: source common/scripts/mods/index.sh
+#       在 diy-part 脚本中调用该目录下的任意修改函数
 
-# shellcheck source=add-xdp-sockets-diag.sh
-source ./add-xdp-sockets-diag.sh
-# shellcheck source=fix-libnl-tiny-compile.sh
-source ./fix-libnl-tiny-compile.sh
-# shellcheck source=modify-luci-collections.sh
-source ./modify-luci-collections.sh
-# shellcheck source=patch-easyupdate.sh
-source ./patch-easyupdate.sh
-# shellcheck source=set-dae-version.sh
-source ./set-dae-version.sh
-# shellcheck source=set-default-shell.sh
-source ./set-default-shell.sh
-# shellcheck source=ensure-execute-permission.sh
-source ./ensure-execute-permission.sh
-# shellcheck source=index.sh
-source ./index.sh
-# shellcheck source=modify-rust-build-config.sh
-source ./modify-rust-build-config.sh
-# shellcheck source=patch-qbittorrent.sh
-source ./patch-qbittorrent.sh
-# shellcheck source=set-default-ip.sh
-source ./set-default-ip.sh
-# shellcheck source=set-fan2go-version.
-source ./set-fan2go-version.
+# 获取当前脚本所在目录
+_COMMON_MODS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 遍历当前目录下所有 .sh 文件，排除自身
+for script in "${_COMMON_MODS_DIR}"/*.sh; do
+    # 跳过 index.sh 自身
+    if [[ "$(basename "${script}")" == "index.sh" ]]; then
+        continue
+    fi
+
+    if [[ -f "${script}" ]]; then
+        # 安全加载，失败时输出警告并退出
+        # shellcheck source=/dev/null
+        if ! source "${script}"; then
+            log "WARN" "Failed to source ${script}" >&2
+            exit 1
+        fi
+    fi
+done
+
+# 清理变量
+unset _COMMON_MODS_DIR

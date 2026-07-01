@@ -52,8 +52,16 @@ set_fan2go_version() {
     local makefile="${3:-feeds/packages/utils/fan2go/Makefile}"
 
     if [[ -z "${raw_version}" || -z "${hash}" ]]; then
-        log ERROR "Usage: set_fan2go_version <version> <hash> [makefile_path]"
+        log ERROR "Usage: set_fan2go_version <version> [hash|auto] [makefile_path]"
         return 1
+    fi
+
+    # 自动计算哈希（如果未提供或为 "auto"）
+    if [[ -z "${hash}" || "${hash}" == "auto" ]]; then
+        log INFO "Auto-computing SHA256 for fan2go ${raw_version}..."
+        local url="https://github.com/markusressel/fan2go/archive/refs/tags/${raw_version}.tar.gz"
+        hash=$(download_and_hash "${url}") || return 1
+        log INFO "Computed hash: ${hash}"
     fi
 
     if [[ ! -f "${makefile}" ]]; then

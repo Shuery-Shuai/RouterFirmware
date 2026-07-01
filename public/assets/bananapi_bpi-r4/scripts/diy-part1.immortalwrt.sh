@@ -9,19 +9,23 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
+# 加载通用函数库（被复制到同级 libs/ 目录）
 # shellcheck source=../../common/scripts/libs/functions.sh
 source "${SCRIPT_DIR}/libs/functions.sh"
+# 加载通用修改索引（被复制到同级 mods/ 目录）
 # shellcheck source=../../common/scripts/mods/index.sh
 source "${SCRIPT_DIR}/mods/index.sh"
 
+# 加载设备专用函数库（被复制到 libs-bananapi_bpi-r4/）
 # shellcheck source=libs/functions.sh
 source "${SCRIPT_DIR}/libs-bananapi_bpi-r4/functions.sh"
+# 加载设备专用修改索引（被复制到 mods-bananapi_bpi-r4/）
 # shellcheck source=mods/index.sh
 source "${SCRIPT_DIR}/mods-bananapi_bpi-r4/index.sh"
 
 # ===== 执行第一阶段修改 =====
 
-modify_bpi_r4_partition 50
+# modify_bpi_r4_partition 50
 
 # ImmortalWrt 通常已包含 XDP sockets 支持，可跳过或按需启用
 # add_xdp_sockets_diag

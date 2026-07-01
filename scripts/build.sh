@@ -121,11 +121,14 @@ main() {
   # download 目标会根据 .config 下载所需的软件包源码
   # 使用多线程可以显著提高下载速度
   log INFO "下载源码包 (${nproc} 线程)"
-  if ! make download "-j${nproc}" 2>&1; then
-    log FATAL "下载失败"
-    log ERROR "工作目录: $(pwd)"
-    log ERROR "线程数: ${nproc}"
-    exit 1
+  if ! make download "-j${nproc}"; then
+    log ERROR "下载失败，尝试单线程下载"
+    if ! make download -j1 V=s; then
+      log FATAL "下载失败"
+      log ERROR "工作目录: $(pwd)"
+      log ERROR "请查看详细日志检查下载输出"
+      exit 1
+    fi
   fi
 
   # 编译固件
@@ -146,7 +149,7 @@ main() {
     if ! make -j1 V=sc 2>&1; then
       log FATAL "编译失败"
       log ERROR "工作目录: $(pwd)"
-      log ERROR "查看详细日志请检查编译输出"
+      log ERROR "请查看详细日志检查编译输出"
       exit 1
     fi
   fi

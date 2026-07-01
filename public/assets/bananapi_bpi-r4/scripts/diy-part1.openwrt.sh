@@ -30,7 +30,7 @@ source "${SCRIPT_DIR}/mods-bananapi_bpi-r4/index.sh"
 # ===== 执行第一阶段修改 =====
 
 # 1. 扩展固件分区（+50MB）
-modify_bpi_r4_partition 50
+# modify_bpi_r4_partition 50
 
 # 2. 添加 XDP sockets 内核模块支持（通用功能，位于 common/scripts/mods/ 下）
 add_xdp_sockets_diag
@@ -131,7 +131,7 @@ clone_repo 'https://github.com/sbwml/openwrt-qBittorrent' \
     '--depth=1' \
     'custom-packages/qbittorrent'
 
-# 孙大强的软件包备份仓库
+# SunDaqiang的软件包备份仓库
 clone_repo 'https://github.com/sundaqiang/openwrt-packages-backup' \
     'main' \
     '--depth=1' \

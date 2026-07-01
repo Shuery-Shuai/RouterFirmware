@@ -286,13 +286,22 @@ _switch_to_target() {
   # 如果在标签上，无需操作（标签不可变）。
   #######################################
   if [[ "${current_ref}" == "${target}" ]]; then
+    # 已在目标版本
     if timeout 3 git symbolic-ref --short HEAD >/dev/null 2>&1; then
-      # 在分支上，更新代码
-      log INFO "在分支 ${target}"
-      _pull_current_branch
+      # 在分支上：先尝试直接 pull，失败后重置到远程分支再 pull
+      log INFO "在分支 ${target}，尝试更新"
+      if ! _pull_current_branch; then
+        log WARN "git pull 失败，尝试 reset 到远程分支后重试"
+        timeout "${GIT_QUICK_TIMEOUT}" git reset --hard "origin/${target}" || log WARN "git reset 失败"
+        _pull_current_branch || log WARN "reset 后 pull 仍然失败，继续构建（可能存在本地修改）"
+      fi
     else
-      # 在标签上，无需更新
-      log INFO "在标签 ${target}，无需更新"
+      # 在标签上：工作区可能被污染，先尝试 restore，失败再 clean
+      log INFO "在标签 ${target}，重置工作区"
+      if ! timeout "${GIT_QUICK_TIMEOUT}" git restore . 2>/dev/null; then
+        log WARN "git restore 失败，使用 git clean 强制清理"
+        timeout "${GIT_CLEAN_TIMEOUT}" git clean -xfd || log WARN "git clean 失败"
+      fi
     fi
     return 0
   fi
@@ -305,15 +314,21 @@ _switch_to_target() {
   #######################################
   log INFO "切换: ${current_ref:-unknown} → ${target}"
 
+  # 第一次尝试切换（无清理）
   if ! _checkout_target_ref "${target}" >/dev/null 2>&1; then
     log WARN "本地无法直接切换到 ${target}，尝试从 origin 更新引用"
     _fetch_target_ref "${target}" || log ERROR "目标引用更新失败"
 
+    # 第二次尝试切换（仅 restore，不删除未跟踪文件）
+    if ! timeout "${GIT_QUICK_TIMEOUT}" git restore . 2>/dev/null; then
+      log WARN "git restore 失败，尝试 git reset --hard"
+      timeout "${GIT_QUICK_TIMEOUT}" git reset --hard HEAD || log WARN "git reset 失败"
+    fi
+
     if ! _checkout_target_ref "${target}" 2>&1; then
-      # 仍然失败，可能是工作区文件冲突，最后才清理。
-      log WARN "切换仍失败，清理工作区后重试"
+      # 仍然失败，最后手段：强制清理未跟踪文件
+      log WARN "切换仍失败，使用 git clean 强制清理工作区"
       timeout "${GIT_CLEAN_TIMEOUT}" git clean -xfd || log ERROR "git clean 失败"
-      timeout "${GIT_QUICK_TIMEOUT}" git restore . || log ERROR "git restore 失败"
       _fetch_target_ref "${target}" || log ERROR "目标引用更新失败"
 
       if ! _checkout_target_ref "${target}" 2>&1; then
@@ -322,7 +337,7 @@ _switch_to_target() {
         exit 1
       fi
     fi
-  fi
+  fi 
 
   _pull_current_branch
   log INFO "成功切换到 ${target}"

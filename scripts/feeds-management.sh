@@ -104,6 +104,21 @@ main() {
   # 切换到源码目录，所有后续操作在此目录中进行
   cd "${source_dir}"
 
+  # 在更新前暴力重置所有 feeds 子仓库
+  if [ -d feeds ]; then
+    find feeds -maxdepth 2 -name .git -type d | while read -r gitdir; do
+      repo_dir=$(dirname "$gitdir")
+      log 'INFO' "重置 ${repo_dir} ……"
+      git -C "$repo_dir" fetch origin
+      git -C "$repo_dir" reset --hard origin/master
+      git -C "$repo_dir" clean -fdx
+    done
+  fi
+
+  # 清除可能由之前构建残留的自定义符号链接（这些链接不是 Git 管理的）
+  log INFO "清除 feeds 中的符号链接"
+  find feeds -type l -delete || log WARN "清除符号链接时出现错误（通常无害）"
+
   # 执行第一阶段 DIY 脚本（通常用于修改 feeds.conf.default）
   if [[ -f "diy-part1.sh" ]]; then
     log INFO "执行 diy-part1.sh"
@@ -124,6 +139,21 @@ main() {
     exit 1
   fi
 
+  # 执行第二阶段 DIY 脚本（通常用于修改软件包源码或配置）
+  # 注意：必须在 feeds install 之前执行，以便：
+  #   1. 创建的符号链接能被构建系统识别
+  #   2. 修改已安装的 feeds 内容（如 Makefile、源码补丁等）
+  if [[ -f "diy-part2.sh" ]]; then
+    log INFO "执行 diy-part2.sh"
+    # 允许脚本返回非零退出码（可能只是警告）
+    bash diy-part2.sh || log WARN "diy-part2.sh 有警告"
+  else
+    log DEBUG "diy-part2.sh 不存在，跳过"
+  fi
+
+  # 刷新包索引
+  ./scripts/feeds update -i
+  
   # 安装所有 feeds 软件包到构建系统
   # -a: 安装所有 feeds
   # -f: 强制安装，覆盖已有版本
@@ -133,18 +163,6 @@ main() {
     log ERROR "工作目录: $(pwd)"
     log ERROR "feeds 脚本: ./scripts/feeds"
     exit 1
-  fi
-
-  # 执行第二阶段 DIY 脚本（通常用于修改软件包源码或配置）
-  # 注意：必须在 feeds install 之后执行，以便：
-  #   1. 创建的符号链接能被构建系统识别
-  #   2. 修改已安装的 feeds 内容（如 Makefile、源码补丁等）
-  if [[ -f "diy-part2.sh" ]]; then
-    log INFO "执行 diy-part2.sh"
-    # 允许脚本返回非零退出码（可能只是警告）
-    bash diy-part2.sh || log WARN "diy-part2.sh 有警告"
-  else
-    log DEBUG "diy-part2.sh 不存在，跳过"
   fi
 
   log INFO "Feeds 管理完成"

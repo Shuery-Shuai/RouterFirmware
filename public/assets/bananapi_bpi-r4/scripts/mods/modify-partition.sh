@@ -46,6 +46,15 @@ modify_bpi_r4_partition() {
     local new_56=$((56 + append_size))
     local new_64=$((64 + append_size))
 
+    # 获取当前分区文件内容以便调试
+    if type -t show_scope_content &>/dev/null; then
+        log INFO "Current partition definitions before modification:"
+        show_scope_content "${partition_file}" "${scope_build_start}" "${scope_build_end}" 'recovery|install|production' "Build Definitions"
+        show_scope_content "${partition_file}" "${scope_device_start}" "${scope_device_end}" \
+            'append-image-stage\s+initramfs-recovery\.itb|mt7988-bl2\s+spim-nand-ubi-comb|mt7988-bl31-uboot\s+.*-snand|mt7988-bl2\s+emmc-comb|mt7988-bl31-uboot\s+.*-emmc|mt798x-gpt\s+emmc|append-image\s+squashfs-sysupgrade\.itb|IMAGE_SIZE' \
+            "Device Definitions"
+    fi
+
     # 调用通用作用域替换函数
     modify_within_scope "${partition_file}" "${append_size}" "${scope_build_start}" "${scope_build_end}" \
         "/recovery/s/32M@/${new_32}M@/
@@ -61,4 +70,13 @@ modify_bpi_r4_partition() {
          /mt798x-gpt\s+emmc/s/56M/${new_56}M/
          /append-image\s+squashfs-sysupgrade\.itb/s/64M/${new_64}M/
          /IMAGE_SIZE/s/64/${new_64}/"
+
+    # 验证修改结果（可选，但建议保留）
+    if type -t show_scope_content &>/dev/null; then
+        log INFO "Partition definitions after modification:"
+        show_scope_content "${partition_file}" "${scope_build_start}" "${scope_build_end}" 'recovery|install|production' "Build Definitions"
+        show_scope_content "${partition_file}" "${scope_device_start}" "${scope_device_end}" \
+            'append-image-stage\s+initramfs-recovery\.itb|mt7988-bl2\s+spim-nand-ubi-comb|mt7988-bl31-uboot\s+.*-snand|mt7988-bl2\s+emmc-comb|mt7988-bl31-uboot\s+.*-emmc|mt798x-gpt\s+emmc|append-image\s+squashfs-sysupgrade\.itb|IMAGE_SIZE' \
+            "Device Definitions"
+    fi
 }

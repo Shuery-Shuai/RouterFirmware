@@ -17,33 +17,199 @@
 #######################################
 
 #######################################
-# 输出带时间戳的日志消息
+# 日志级别常量
 #
-# 格式化日志输出，包含当前时间、日志级别和消息内容。
-# 所有输出重定向到 stderr，避免干扰脚本的 stdout 输出。
-#
-# Arguments:
-#   $1 - 日志级别 (INFO|WARN|ERROR)
-#   $2... - 日志消息内容
+# 用于设置和比较日志级别，数值越小级别越低。
 #
 # Globals:
-#   None
+#   LOG_LEVEL_TRACE  - 追踪级别 (0)
+#   LOG_LEVEL_DEBUG  - 调试级别 (1)
+#   LOG_LEVEL_INFO   - 信息级别 (2)
+#   LOG_LEVEL_WARN   - 警告级别 (3)
+#   LOG_LEVEL_ERROR  - 错误级别 (4)
+#   LOG_LEVEL_FATAL  - 致命级别 (5)
+#######################################
+# shellcheck disable=SC2034
+readonly LOG_LEVEL_TRACE=0 LOG_LEVEL_DEBUG=1 LOG_LEVEL_INFO=2
+# shellcheck disable=SC2034
+readonly LOG_LEVEL_WARN=3 LOG_LEVEL_ERROR=4 LOG_LEVEL_FATAL=5
+
+#######################################
+# ANSI 颜色代码常量
+#
+# 根据输出目标是否为终端自动启用或禁用颜色。
+# 仅当 stderr 连接到 TTY 时启用彩色输出。
+#
+# Globals:
+#   COLOR_RESET  - 重置所有样式
+#   COLOR_GRAY   - 灰色（用于 TRACE）
+#   COLOR_CYAN   - 青色（用于 DEBUG）
+#   COLOR_BLUE   - 蓝色（用于 INFO）
+#   COLOR_YELLOW - 黄色（用于 WARN）
+#   COLOR_RED    - 红色（用于 ERROR/FATAL）
+#   COLOR_GREEN  - 绿色（用于 SUCCESS）
+#######################################
+if [[ -t 2 ]]; then
+    readonly COLOR_RESET='\033[0m'
+    readonly COLOR_GRAY='\033[0;37m'
+    readonly COLOR_CYAN='\033[0;36m'
+    readonly COLOR_BLUE='\033[0;34m'
+    readonly COLOR_YELLOW='\033[1;33m'
+    readonly COLOR_RED='\033[1;31m'
+    readonly COLOR_GREEN='\033[1;32m'
+else
+    readonly COLOR_RESET='' COLOR_GRAY='' COLOR_CYAN=''
+    readonly COLOR_BLUE='' COLOR_YELLOW='' COLOR_RED='' COLOR_GREEN=''
+fi
+
+#######################################
+# 可配置的全局变量
+#
+# Globals:
+#   LOG_LEVEL      - 当前日志级别，低于此级别的日志将被过滤
+#   LOG_TO_FILE    - 是否同时写入日志文件
+#   LOG_FILE_PATH  - 日志文件的存储路径
+#######################################
+: "${LOG_LEVEL:=INFO}"
+: "${LOG_TO_FILE:=false}"
+: "${LOG_FILE_PATH:=/tmp/openwrt_build_$(date +%Y%m%d_%H%M%S).log}"
+
+#######################################
+# 获取日志级别的显示样式（内部函数）
+#
+# 根据日志级别返回对应的颜色代码和 emoji 图标。
+#
+# Arguments:
+#   $1 - 日志级别名称 (TRACE|DEBUG|INFO|WARN|ERROR|FATAL|SUCCESS)
 #
 # Outputs:
-#   格式化日志到 stderr
-#   格式: [YYYY-MM-DD HH:MM:SS] [LEVEL] message
+#   输出格式: "颜色代码|emoji"
+#   示例: "\033[0;34m|💡"
 #
 # Returns:
 #   0 - 总是成功
+#######################################
+_get_log_style() {
+    local level="$1"
+    case "${level}" in
+    TRACE) echo "${COLOR_GRAY}|🔬" ;;
+    DEBUG) echo "${COLOR_CYAN}|🐛" ;;
+    INFO) echo "${COLOR_BLUE}|💡" ;;
+    WARN) echo "${COLOR_YELLOW}|🚨" ;;
+    ERROR) echo "${COLOR_RED}|🚫" ;;
+    FATAL) echo "${COLOR_RED}|💀" ;;
+    SUCCESS) echo "${COLOR_GREEN}|✅" ;;
+    *) echo "${COLOR_GRAY}|📌" ;;
+    esac
+}
+
+#######################################
+# 将日志级别名称转换为数值（内部函数）
+#
+# 用于比较日志级别的优先级。
+#
+# Arguments:
+#   $1 - 日志级别名称
+#
+# Outputs:
+#   日志级别对应的数值 (0-5)，未知级别返回 -1
+#
+# Returns:
+#   0 - 总是成功
+#######################################
+_normalize_log_level() {
+    case "$1" in
+    TRACE) echo 0 ;;
+    DEBUG) echo 1 ;;
+    INFO) echo 2 ;;
+    WARN) echo 3 ;;
+    ERROR) echo 4 ;;
+    FATAL) echo 5 ;;
+    *) echo -1 ;;
+    esac
+}
+
+#######################################
+# 输出格式化的日志消息
+#
+# 支持多种调用方式：
+#   - log LEVEL MESSAGE
+#   - log LEVEL CATEGORY MESSAGE
+#   - log LEVEL CATEGORY MESSAGE TO_FILE
+#
+# 日志格式: [时间戳] [级别] [脚本名][分类] 消息
+#
+# Arguments:
+#   $1 - 日志级别 (TRACE|DEBUG|INFO|WARN|ERROR|FATAL|SUCCESS)
+#   $2 - 消息内容 或 分类名称
+#   $3 - 消息内容（当 $2 是分类时）
+#   $4 - 是否写入文件 (true|false，覆盖 LOG_TO_FILE 变量)
+#
+# Outputs:
+#   格式化的日志输出到 stderr
+#   如果启用文件记录，同时追加到 LOG_FILE_PATH
+#
+# Returns:
+#   0 - 成功
+#   1 - 参数错误
 #
 # Examples:
-#   log INFO "开始处理软件包"
-#   log ERROR "文件不存在: ${file}"
+#   log INFO "服务已启动"
+#   log WARN "网络" "连接超时，正在重试..."
+#   log ERROR "数据库" "连接失败" true
 #######################################
 log() {
     local level="$1"
-    shift
-    printf '[%(%Y-%m-%d %H:%M:%S)T] [%s] %s\n' -1 "${level}" "$*" >&2
+    local category=""
+    local message=""
+    local to_file="${LOG_TO_FILE}"
+
+    case $# in
+    2) message="$2" ;;
+    3)
+        category="$2"
+        message="$3"
+        ;;
+    4)
+        category="$2"
+        message="$3"
+        to_file="$4"
+        ;;
+    *)
+        printf 'Usage: log LEVEL [CATEGORY] MESSAGE [TO_FILE]\n' >&2
+        return 1
+        ;;
+    esac
+
+    # 级别过滤：如果当前消息级别低于设定级别，直接返回
+    local level_num current_level_num
+    level_num=$(_normalize_log_level "${level}")
+    current_level_num=$(_normalize_log_level "${LOG_LEVEL}")
+    [[ ${level_num} -lt ${current_level_num} ]] && return 0
+
+    # 获取样式
+    local style color emoji
+    style=$(_get_log_style "${level}")
+    color="${style%|*}"
+    emoji="${style#*|}"
+
+    # 获取调用脚本名称（去除路径和扩展名）
+    local script_name
+    script_name=$(basename "${BASH_SOURCE[2]:-${BASH_SOURCE[1]:-unknown}}" .sh)
+
+    # 构建分类标签
+    local cat_tag=""
+    [[ -n "${category}" ]] && cat_tag=" [${category}]"
+
+    # 输出到 stderr（带颜色）
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    printf '%b\n' "[${timestamp}] ${color}[${emoji} ${level}]${COLOR_RESET} [${script_name}]${cat_tag} ${message}" >&2
+
+    # 输出到文件（不带颜色代码）
+    if [[ "${to_file}" == "true" ]]; then
+        echo "[${timestamp}] [${emoji} ${level}] [${script_name}]${cat_tag} ${message}" >>"${LOG_FILE_PATH}"
+    fi
 }
 
 #######################################
@@ -69,49 +235,101 @@ modify_within_scope() {
         return 1
     fi
 
-    printf 'Modifying %s with append_size=%d...\n' "${file}" "${append_size}"
+    log INFO "Modifying ${file} with append_size=${append_size} within scope \"${start_re}\" to \"${end_re}\"..."
     if ! sed -i -E -e "/${start_re}/,/${end_re}/ { ${sed_script} }" "${file}"; then
         log ERROR "Failed to modify ${file}."
         return 1
     fi
-    log INFO "Done modifying ${file}."
+    log INFO "Done modifying ${file} within scope \"${start_re}\" to \"${end_re}\"."
 }
 
 #######################################
-# 在指定作用域内 grep 匹配行（调试辅助函数）
+# 在文件的作用域内将匹配模式中的数字增加指定值
 #
-# 用于验证分区修改结果，从配置文件中提取并高亮显示特定范围内的匹配行。
+# 使用 awk 读取文件，定位作用域，对匹配正则的行中的数字做加法。
+# 注意：awk 中的正则需兼容，此处模式捕获数字并替换为 num+offset。
 #
 # Arguments:
 #   $1 - 文件路径
-#   $2 - 作用域起始正则表达式
-#   $3 - 作用域结束正则表达式
-#   $4 - grep 匹配模式（支持 ERE 扩展正则）
+#   $2 - 作用域起始正则（awk 格式，如 /^define Build\/mt798x-gpt/）
+#   $3 - 作用域结束正则（如 /^endef/）
+#   $4 - 匹配行正则（用于识别哪些行需修改）
+#   $5 - 数字捕获的正则（如 /[0-9]+/，可使用 awk match 定位）
+#   $6 - 增加的数值（整数）
 #
-# Globals:
-#   None
+# 由于复杂性，此函数依赖 awk 并且假设行内数字出现在特定位置，
+# 我们针对分区文件定制专用版本。
+# 但为了保持通用，我们提供基于 awk 的模板。
+# 实际调用时可根据需求调整。
+#######################################
+add_values_in_scope() {
+    local file="$1"
+    local start_re="$2"
+    local end_re="$3"
+    local line_match="$4"
+    local num_pos="$5" # 例如 "M@", "M ", "m" 等上下文
+    local offset="$6"
+
+    awk -v start_re="${start_re}" -v end_re="${end_re}" \
+        -v line_match="${line_match}" -v num_pos="${num_pos}" -v offset="${offset}" '
+        $0 ~ start_re { in_scope=1 }
+        in_scope && $0 ~ end_re { in_scope=0; print; next }
+        in_scope && $0 ~ line_match {
+            # 将行中匹配 num_pos 前数字的部分提取并加 offset
+            # 简单实现：查找第一个数字串在 num_pos 前
+            if (match($0, /[0-9]+/)) {
+                num = substr($0, RSTART, RLENGTH)
+                newnum = num + offset
+                $0 = substr($0, 1, RSTART-1) newnum substr($0, RSTART+RLENGTH)
+            }
+        }
+        { print }
+    ' "${file}" >"${file}.tmp" && mv "${file}.tmp" "${file}"
+}
+
+#######################################
+# 展示文件中指定作用域内匹配的行（通用调试工具）
+#
+# 从文件中提取由起始/结束正则划定的内容块，
+# 并可选择性地用 grep 高亮特定模式。
+#
+# Arguments:
+#   $1 - 文件路径
+#   $2 - 作用域起始正则
+#   $3 - 作用域结束正则
+#   $4 - grep 匹配模式（可选，为空则输出所有行）
+#   $5 - 自定义标题前缀（可选，默认为 "Content"）
 #
 # Outputs:
-#   带颜色高亮的匹配行到 stdout
-#   格式: ━━━ 标题 ━━━
-#         匹配内容（彩色）
-#         ━━━━━━━━━━━━━━━
+#   带分隔线的作用域内容到 stdout
+#   分隔线和统计信息到 stderr（通过 log）
 #
 # Returns:
-#   0 - 总是成功
+#   0 - 总是成功（即使内容为空）
 #
 # Examples:
-#   scope_grep "filogic.mk" "$START" "$END" 'recovery|install'
+#   show_scope_content "Makefile" "^define Package/mypkg" "^endef" "PKG_VERSION|PKG_RELEASE" "Package mypkg"
+#   show_scope_content "config.txt" "# 网络配置" "# 结束" "" "网络配置段"
 #######################################
-scope_grep() {
+show_scope_content() {
     local file="$1"
     local start_pattern="$2"
     local end_pattern="$3"
-    local grep_patterns="$4"
+    local grep_patterns="${4:-}"
+    local title="${5:-Content}"
 
-    log 'INFO' "━━━━━━━━━━━━━━━━━━━━ Partition info from ${start_pattern} to ${end_pattern} ━━━━━━━━━━━━━━━━━━━━"
-    sed -n -e "/${start_pattern}/,/${end_pattern}/p" "${file}" | grep -E --color=always "${grep_patterns}"
-    log 'INFO' "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [[ ! -f "${file}" ]]; then
+        log WARN "File ${file} does not exist, cannot show scope content."
+        return 0
+    fi
+
+    log INFO "━━━━━━━━━━━━━━━━━━━━ ${title} (${start_pattern} → ${end_pattern}) ━━━━━━━━━━━━━━━━━━━━"
+    if [[ -n "${grep_patterns}" ]]; then
+        sed -n -e "/${start_pattern}/,/${end_pattern}/p" "${file}" | grep -E --color=always "${grep_patterns}"
+    else
+        sed -n -e "/${start_pattern}/,/${end_pattern}/p" "${file}"
+    fi
+    log INFO "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 #######################################
@@ -193,9 +411,6 @@ clone_repo() {
 #   $1 - 源目录 (from)
 #   $2 - 目标路径 (to)
 #
-# Globals:
-#   None
-#
 # Outputs:
 #   相对路径字符串到 stdout (如 "../../target/dir")
 #
@@ -246,7 +461,8 @@ relpath() {
         fi
     done
 
-    log 'INFO' "Relative path: ${rel_path}"
+    # 输出最终相对路径（关键修复）
+    printf '%s' "${rel_path}"
 }
 
 #######################################
@@ -360,19 +576,12 @@ extract_pkg_name() {
 #   $1 - 软件包目录的绝对路径
 #   $2 - 软件包名称 (PKG_NAME)
 #
-# Globals:
-#   None
-#
 # Outputs:
 #   目标符号链接路径到 stdout (如 "feeds/luci/applications/luci-app-xxx")
 #   解析过程日志到 stderr (通过 log)
 #
 # Returns:
 #   0 - 总是成功
-#
-# Examples:
-#   resolve_target_path "/path/to/luci-app-example" "luci-app-example"
-#   # 输出: feeds/luci/applications/luci-app-example
 #######################################
 resolve_target_path() {
     local abs_dir="$1"
@@ -382,16 +591,16 @@ resolve_target_path() {
     # 策略 1: LuCI 软件包快速路径（基于命名约定）
     if [[ "${pkg_name}" == luci-app-* ]]; then
         target_path="feeds/luci/applications/${pkg_name}"
-        log 'INFO' 'Fast path: luci-app-* -> applications'
+        log 'INFO' '  Fast path: luci-app-* -> applications'
     elif [[ "${pkg_name}" == luci-theme-* ]]; then
         target_path="feeds/luci/themes/${pkg_name}"
-        log 'INFO' 'Fast path: luci-theme-* -> themes'
+        log 'INFO' '  Fast path: luci-theme-* -> themes'
     elif [[ "${pkg_name}" == luci-lib-* ]]; then
         target_path="feeds/luci/libs/${pkg_name}"
-        log 'INFO' 'Fast path: luci-lib-* -> libs'
+        log 'INFO' '  Fast path: luci-lib-* -> libs'
     elif [[ "${pkg_name}" == luci-proto-* ]]; then
         target_path="feeds/luci/protocols/${pkg_name}"
-        log 'INFO' 'Fast path: luci-proto-* -> protocols'
+        log 'INFO' '  Fast path: luci-proto-* -> protocols'
     else
         # 策略 2: 从 Makefile 提取 SECTION 变量
         local makefile="${abs_dir}/Makefile"
@@ -399,80 +608,79 @@ resolve_target_path() {
         if [[ -f "${makefile}" ]]; then
             section="$(grep -E '^\s*SECTION\s*:?=' "${makefile}" | head -1 | sed -E 's/^\s*SECTION\s*:?=\s*([^[:space:]]+).*$/\1/')"
         fi
-        log 'INFO' "Extracted SECTION from Makefile: '${section}'"
+        log 'INFO' "  Extracted SECTION from Makefile: '${section}'"
 
-        # 策略 3: SECTION 到 feed 的映射表
         if [[ -n "${section}" ]]; then
             case "${section}" in
             luci)
                 target_path="feeds/luci/applications/${pkg_name}"
-                log 'INFO' "Mapped SECTION=luci -> feeds/luci/applications"
+                log 'INFO' "  Mapped SECTION=luci -> feeds/luci/applications"
                 ;;
             net | network)
                 target_path="feeds/packages/net/${pkg_name}"
-                log 'INFO' "Mapped SECTION=net -> feeds/packages/net"
+                log 'INFO' "  Mapped SECTION=net -> feeds/packages/net"
                 ;;
             utils | utilities)
                 target_path="feeds/packages/utils/${pkg_name}"
-                log 'INFO' "Mapped SECTION=utils -> feeds/packages/utils"
+                log 'INFO' "  Mapped SECTION=utils -> feeds/packages/utils"
                 ;;
             lang | languages)
                 target_path="feeds/packages/lang/${pkg_name}"
-                log 'INFO' "Mapped SECTION=lang -> feeds/packages/lang"
+                log 'INFO' "  Mapped SECTION=lang -> feeds/packages/lang"
                 ;;
             libs | libraries)
                 target_path="feeds/packages/libs/${pkg_name}"
-                log 'INFO' "Mapped SECTION=libs -> feeds/packages/libs"
+                log 'INFO' "  Mapped SECTION=libs -> feeds/packages/libs"
                 ;;
             admin | administration)
                 target_path="feeds/packages/admin/${pkg_name}"
-                log 'INFO' "Mapped SECTION=admin -> feeds/packages/admin"
+                log 'INFO' "  Mapped SECTION=admin -> feeds/packages/admin"
                 ;;
             devel | development)
                 target_path="feeds/packages/devel/${pkg_name}"
-                log 'INFO' "Mapped SECTION=devel -> feeds/packages/devel"
+                log 'INFO' "  Mapped SECTION=devel -> feeds/packages/devel"
                 ;;
             multimedia)
                 target_path="feeds/packages/multimedia/${pkg_name}"
-                log 'INFO' "Mapped SECTION=multimedia -> feeds/packages/multimedia"
+                log 'INFO' "  Mapped SECTION=multimedia -> feeds/packages/multimedia"
                 ;;
             kernel)
                 target_path="feeds/packages/kernel/${pkg_name}"
-                log 'INFO' "Mapped SECTION=kernel -> feeds/packages/kernel"
+                log 'INFO' "  Mapped SECTION=kernel -> feeds/packages/kernel"
                 ;;
             base)
                 target_path="feeds/packages/base/${pkg_name}"
-                log 'INFO' "Mapped SECTION=base -> feeds/packages/base"
+                log 'INFO' "  Mapped SECTION=base -> feeds/packages/base"
                 ;;
             *)
-                log 'WARN' "Unknown SECTION '${section}', falling back to name heuristics"
+                log 'WARN' "  Unknown SECTION '${section}', falling back to name heuristics"
                 ;;
             esac
         fi
 
-        # 策略 4: 名称启发式（SECTION 未知或为空时）
+        # 策略 3: 名称启发式（SECTION 未知或为空时）
         if [[ -z "${target_path}" ]]; then
             if [[ "${pkg_name}" == net-* ]] || [[ "${pkg_name}" == network-* ]]; then
                 target_path="feeds/packages/net/${pkg_name}"
-                log 'INFO' "Name heuristic: net-* -> feeds/packages/net"
+                log 'INFO' "  Name heuristic: net-* -> feeds/packages/net"
             elif [[ "${pkg_name}" == *-utils ]] || [[ "${pkg_name}" == *-tools ]]; then
                 target_path="feeds/packages/utils/${pkg_name}"
-                log 'INFO' "Name heuristic: *-utils/tools -> feeds/packages/utils"
+                log 'INFO' "  Name heuristic: *-utils/tools -> feeds/packages/utils"
             elif [[ "${pkg_name}" == lang-* ]]; then
                 target_path="feeds/packages/lang/${pkg_name}"
-                log 'INFO' "Name heuristic: lang-* -> feeds/packages/lang"
+                log 'INFO' "  Name heuristic: lang-* -> feeds/packages/lang"
             elif [[ "${pkg_name}" == lib* ]] || [[ "${pkg_name}" == *-lib ]]; then
                 target_path="feeds/packages/libs/${pkg_name}"
-                log 'INFO' "Name heuristic: lib* -> feeds/packages/libs"
+                log 'INFO' "  Name heuristic: lib* -> feeds/packages/libs"
             else
-                # 策略 5: 默认回退
                 target_path="feeds/base/${pkg_name}"
-                log 'INFO' "Default fallback -> feeds/base"
+                log 'INFO' "  Default fallback -> feeds/base"
             fi
         fi
     fi
 
-    log 'INFO' "Target path: ${target_path}"
+    # 最终输出目标路径（关键！之前缺失了这一行）
+    printf '%s' "${target_path}"
 }
 
 #######################################
@@ -755,49 +963,46 @@ modify_luci_collection() {
     local sed_exprs=("$@")
 
     if [[ -f "${makefile}" ]]; then
-        log 'INFO' 'Modifying %s...\n' "${makefile}"
+        log 'INFO' 'Modifying ${makefile}……'
         sed -i "${sed_exprs[@]}" "${makefile}"
     else
-        log 'ERROR' 'File %s does not exist.\n' "${makefile}" >&2
+        log 'ERROR' 'File ${makefile} does not exist.'
     fi
 }
 
 #######################################
-# 修改软件包 Makefile 中的指定变量值
+# 修改软件包 Makefile 中的指定变量值（键值对）
 #
-# 对每个键值对执行 sed -i "s/^KEY:=.*/KEY:=VALUE/" 替换。
-# 适用于 PKG_VERSION, PKG_HASH, PKG_SOURCE 等标准字段。
+# 使用 nameref 接收关联数组名，遍历键并替换 Makefile 中的对应行。
+# 若数组未声明或目标文件不存在，则输出错误/警告并安全返回。
 #
 # Arguments:
 #   $1 - Makefile 路径
-#   $2 - 关联数组引用，格式： declare -A vars=(["PKG_VERSION"]="1.0" ["PKG_HASH"]="abc")
-#        传递时使用 vars 作为名称，函数内使用 eval 展开
+#   $2 - 关联数组变量名（必须预先声明）
 #
-# Examples:
-#   declare -A dae_vars=( ["PKG_VERSION"]="1.1.0_rc1" ["PKG_SOURCE"]="dae-1.1.0rc1.zip" ["PKG_SOURCE_URL"]="https://..." ["PKG_HASH"]="hash" )
-#   set_makefile_vars "feeds/packages/net/dae/Makefile" dae_vars
+# Returns:
+#   0 - 成功修改
+#   1 - 数组不存在
 #######################################
 set_makefile_vars() {
     local makefile="$1"
     local array_name="$2"
 
-    # 检查数组是否存在
-    if [[ ! -v "${array_name}" ]]; then
+    # 使用 declare -p 检测变量是否已声明（比 -v 更可靠）
+    if ! declare -p "${array_name}" &>/dev/null; then
         log ERROR "Array '${array_name}' does not exist."
         return 1
     fi
 
-    # 检查 Makefile 是否存在
     if [[ ! -f "${makefile}" ]]; then
         log WARN "Makefile ${makefile} not found, skipping var update."
         return 0
     fi
 
-    # 创建 nameref（Bash 4.3+）
+    # 创建 nameref 引用调用者的数组
     local -n _ref="${array_name}"
 
     for key in "${!_ref[@]}"; do
-        # 使用 | 作为 sed 分隔符，因为值中几乎不会出现 |
         sed -i "s|^${key}:=.*|${key}:=${_ref[$key]}|" "${makefile}"
     done
 
@@ -828,4 +1033,117 @@ normalize_pkg_version() {
     else
         printf '%s\n' "${version}"
     fi
+}
+
+#######################################
+# 下载文件并计算其 SHA256 哈希值（增强版）
+#
+# 自动选择可用下载工具，支持重试、超时、下载验证，
+# 适用于构建过程中获取源码包并校验完整性。
+#
+# Arguments:
+#   $1 - 下载 URL（必需，建议 HTTPS）
+#   $2 - 保存的文件名（可选，默认从 URL 提取）
+#   $3 - 重试次数（可选，默认 3）
+#
+# Outputs:
+#   SHA256 哈希值（64 位十六进制字符串）到 stdout
+#   状态信息与错误到 stderr（通过 log 函数）
+#
+# Returns:
+#   0 - 成功下载并计算哈希
+#   1 - 多次重试后仍然失败，或工具缺失
+#
+# Examples:
+#   hash=$(download_and_hash "https://example.com/archive.zip")
+#   hash=$(download_and_hash "https://example.com/archive.tar.gz" "source.tar.gz" 5)
+#######################################
+download_and_hash() {
+    local url="$1"
+    local filename="${2:-}"
+    local retries="${3:-3}"
+    local attempt=0
+
+    # 创建临时目录（退出时自动清理）
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '${tmpdir}'" RETURN
+
+    if [[ -z "${filename}" ]]; then
+        filename=$(basename "${url}" | sed 's/\?.*//;s/#.*//')
+        [[ -z "${filename}" ]] && filename="download.$$"
+    fi
+    local outfile="${tmpdir}/${filename}"
+
+    # 检测可用下载工具
+    local downloader=""
+    if command -v curl &>/dev/null; then
+        downloader="curl"
+    elif command -v wget &>/dev/null; then
+        downloader="wget"
+    else
+        log ERROR "Neither curl nor wget is available"
+        return 1
+    fi
+
+    # 循环重试
+    while ((attempt < retries)); do
+        ((attempt++))
+        log INFO "Downloading ${url} (attempt ${attempt}/${retries})..."
+
+        # 使用 curl 下载
+        if [[ "${downloader}" == "curl" ]]; then
+            # --connect-timeout 10s, 总下载时间 60s, 跟随重定向, 显示进度但不污染 stdout
+            if curl -sS -L --connect-timeout 10 --max-time 60 -o "${outfile}" --fail "${url}"; then
+                log DEBUG "curl download succeeded"
+                break
+            else
+                log WARN "curl download failed (exit code $?)"
+            fi
+        # 使用 wget 下载
+        elif [[ "${downloader}" == "wget" ]]; then
+            # --timeout=10 连接超时, 读取超时 60s, 重试 0 次（本层循环控制）
+            if wget -nv --timeout=10 --read-timeout=60 -O "${outfile}" "${url}"; then
+                log DEBUG "wget download succeeded"
+                break
+            else
+                log WARN "wget download failed (exit code $?)"
+            fi
+        fi
+
+        # 下载失败但还有重试机会，等待递增间隔
+        if ((attempt < retries)); then
+            sleep $((attempt * 2))
+        else
+            log ERROR "Failed to download ${url} after ${retries} attempts"
+            return 1
+        fi
+    done
+
+    # 验证下载文件大小 > 0
+    if [[ ! -s "${outfile}" ]]; then
+        log ERROR "Downloaded file is empty: ${outfile}"
+        return 1
+    fi
+
+    # 计算 SHA256
+    local hash=""
+    if command -v sha256sum &>/dev/null; then
+        hash=$(sha256sum "${outfile}" | awk '{print $1}')
+    elif command -v shasum &>/dev/null; then
+        hash=$(shasum -a 256 "${outfile}" | awk '{print $1}')
+    else
+        log ERROR "No sha256sum or shasum found"
+        return 1
+    fi
+
+    # 哈希合法性校验（长度应为 64）
+    if [[ ${#hash} -ne 64 ]]; then
+        log ERROR "Computed hash length is ${#hash}, expected 64"
+        return 1
+    fi
+
+    log INFO "Downloaded and computed hash: ${hash}"
+    printf '%s' "${hash}"
 }

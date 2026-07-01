@@ -114,7 +114,7 @@ main() {
   #######################################
   # 复制主配置文件
   #######################################
-  local config="${src_dir}/assets/${profile}/${firmware}.${version}.config"
+  local config="${src_dir}/assets/${profile}/configs/${firmware}.config"
   log DEBUG "主配置文件: ${config}"
   require_file "${config}" "配置文件不存在: ${config}"
   cp "${config}" "${dst_dir}/.config"
@@ -126,7 +126,7 @@ main() {
   # diff.config 用于存储与默认配置的差异，
   # 如果不存在则跳过，不影响后续流程。
   #######################################
-  local diff_config="${src_dir}/assets/${profile}/${firmware}.${version}.diff.config"
+  local diff_config="${src_dir}/assets/${profile}/configs/${firmware}.${version}.diff.config"
   if [[ -f "${diff_config}" ]]; then
     cp "${diff_config}" "${dst_dir}/diff.config"
     log INFO "已复制: diff.config"
@@ -142,10 +142,10 @@ main() {
   #######################################
   local libs_dir="${src_dir}/assets/common/scripts/libs"
   local mods_dir="${src_dir}/assets/common/scripts/mods"
-  local libs_device_dir="${src_dir}/assets/${profile}/scripts/libs-${profile}"
-  local mods_device_dir="${src_dir}/assets/${profile}/scripts/mods-${profile}"
-  local diy1="${src_dir}/assets/${profile}/diy-part1.${firmware}.sh"
-  local diy2="${src_dir}/assets/${profile}/diy-part2.${firmware}.sh"
+  local libs_device_dir="${src_dir}/assets/${profile}/scripts/libs"
+  local mods_device_dir="${src_dir}/assets/${profile}/scripts/mods"
+  local diy1="${src_dir}/assets/${profile}/scripts/diy-part1.${firmware}.sh"
+  local diy2="${src_dir}/assets/${profile}/scripts/diy-part2.${firmware}.sh"
   require_dir "${libs_dir}" "libs 目录不存在"
   require_dir "${mods_dir}" "mods 目录不存在"
   require_dir "${libs_device_dir}" "libs-${profile} 目录不存在"
@@ -153,13 +153,15 @@ main() {
   require_file "${diy1}" "diy-part1.${firmware}.sh 不存在"
   require_file "${diy2}" "diy-part2.${firmware}.sh 不存在"
 
-  cp -r "${libs_dir}"/*.sh "${dst_dir}/scripts/libs/"
-  cp -r "${mods_dir}"/*.sh "${dst_dir}/scripts/mods/"
-  cp -r "${libs_device_dir}"/*.sh "${dst_dir}/scripts/libs-${profile}/"
-  cp -r "${mods_device_dir}"/*.sh "${dst_dir}/scripts/mods-${profile}/"
+  # 使用 rsync 同步，源路径加 / 表示复制内容，避免目录嵌套
+  rsync -a --delete "${libs_dir}/" "${dst_dir}/libs/"
+  rsync -a --delete "${mods_dir}/" "${dst_dir}/mods/"
+  rsync -a --delete "${libs_device_dir}/" "${dst_dir}/libs-${profile}/"
+  rsync -a --delete "${mods_device_dir}/" "${dst_dir}/mods-${profile}/"
+
+  # DIY 脚本直接复制
   cp "${diy1}" "${dst_dir}/diy-part1.sh"
   cp "${diy2}" "${dst_dir}/diy-part2.sh"
-  log INFO "已复制: DIY 脚本"
 
   #######################################
   # 同步额外文件
