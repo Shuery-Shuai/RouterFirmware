@@ -194,77 +194,57 @@ jobs:
           sudo chown -R runner:runner "$GITHUB_WORKSPACE"
 
       # -----------------------------------------------------------------------
-      # 步骤 7: 查找本工作流在同分支上一次成功运行的 ID，用于复用历史产物
+      # 步骤 7: 查找本工作流在同分支最近一次成功运行的包含目标构建产物的 ID，
+      #         用于复用历史产物
       # -----------------------------------------------------------------------
-      - name: 获取上次成功运行 ID 并检查产物
+      - name: 查找包含 RouterFirmware 的最近成功运行
         id: prev-run
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "============================================"
-          echo "调试信息：获取上次成功运行"
-          echo "工作流名称: ${{ github.workflow }}"
-          echo "当前分支: ${{ github.ref_name }}"
-          echo "============================================"
-          echo ""
-      
-          echo "查询最近 3 次成功运行（按时间倒序）..."
-          echo ""
-          gh run list --workflow "${{ github.workflow }}" \
-                      --branch "${{ github.ref_name }}" \
-                      --status success \
-                      --limit 3 \
-                      --json databaseId,displayTitle,createdAt \
-                      --jq 'to_entries[] | "\(.key): ID=\(.value.databaseId)  标题=\(.value.displayTitle)  创建时间=\(.value.createdAt)"'
-          echo ""
-      
-          PREV_RUN_ID=$(gh run list --workflow "${{ github.workflow }}" \
-                                    --branch "${{ github.ref_name }}" \
-                                    --status success \
-                                    --limit 3 \
-                                    --json databaseId \
-                                    --jq ".[0].databaseId")
-      
-          echo "============================================"
-          echo "选中的上次成功运行 ID: ${PREV_RUN_ID:-无}"
-          echo "============================================"
-          echo ""
-      
-          if [ -n "${PREV_RUN_ID}" ]; then
-            echo "查询该运行的所有 Artifact..."
-            # 列出所有 Artifact，显示名称、大小、过期时间
-            ARTIFACT_LIST=$(gh api "repos/${{ github.repository }}/actions/runs/${PREV_RUN_ID}/artifacts" \
-              --jq '.artifacts[] | "名称: \(.name) | 大小: \(.size_in_bytes) 字节 | 过期: \(.expires_at)"')
-            
-            if [ $? -ne 0 ]; then
-              echo "⚠️ 无法获取 Artifact 列表（可能运行不存在或权限不足）"
-            else
-              echo "$ARTIFACT_LIST"
-              # 检查是否有 RouterFirmware
-              FOUND=$(echo "$ARTIFACT_LIST" | grep -q "RouterFirmware" && echo "yes" || echo "no")
-              if [ "$FOUND" = "yes" ]; then
-                echo "✅ 找到 RouterFirmware"
-              else
-                echo "❌ 运行 ${PREV_RUN_ID} 中没有名为 RouterFirmware 的 Artifact"
-              fi
+          echo "正在搜索最近的成功运行，寻找 RouterFirmware 产物..."
+          FOUND_ID=""
+          RUN_IDS=$(gh run list --workflow "${{ github.workflow }}" \
+                                --branch "${{ github.ref_name }}" \
+                                --status success \
+                                --limit 10 \
+                                --json databaseId \
+                                --jq '.[].databaseId')
+          for ID in $RUN_IDS; do
+            EXISTS=$(gh api "repos/${{ github.repository }}/actions/runs/${ID}/artifacts" \
+                      --jq '.artifacts[] | select(.name=="RouterFirmware") | .name')
+            if [ -n "$EXISTS" ]; then
+              FOUND_ID="$ID"
+              echo "✅ 找到可用运行: $ID"
+              break
             fi
-          else
-            echo "未找到任何成功运行，跳过 Artifact 检查"
+          done
+          if [ -z "$FOUND_ID" ]; then
+            echo "⚠️ 未找到任何包含 RouterFirmware 的历史运行"
           fi
-      
-          echo "run-id=${PREV_RUN_ID}" >> $GITHUB_OUTPUT
+          echo "run-id=${FOUND_ID}" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------------------
       # 步骤 8: 下载上一次运行的 Artifact (允许失败，以便首次运行不中断)
       # -----------------------------------------------------------------------
       - name: 下载历史构建产物
-        uses: actions/download-artifact@v8
         if: steps.prev-run.outputs.run-id != ''
         continue-on-error: true
-        with:
-          name: RouterFirmware
-          run-id: ${{ steps.prev-run.outputs.run-id }}
-          path: public-previous/ # 先下载到临时目录，避免直接覆盖
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "从运行 ${{ steps.prev-run.outputs.run-id }} 下载产物..."
+          gh run download ${{ steps.prev-run.outputs.run-id }} \
+            --name RouterFirmware \
+            --dir public-previous/ \
+            --repo ${{ github.repository }}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ 历史产物下载成功"
+            ls -lh public-previous/
+          else
+            echo "⚠️ 下载失败，继续执行后续步骤"
+          fi
 
       # -----------------------------------------------------------------------
       # 步骤 9: 将历史产物合并到 public/，但明确排除 assets 目录，
