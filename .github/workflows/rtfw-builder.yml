@@ -196,7 +196,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 步骤 7: 查找本工作流在同分支上一次成功运行的 ID，用于复用历史产物
       # -----------------------------------------------------------------------
-      - name: 获取上次成功运行 ID
+      - name: 获取上次成功运行 ID 并检查产物
         id: prev-run
         env:
           GH_TOKEN: ${{ github.token }}
@@ -208,12 +208,12 @@ jobs:
           echo "============================================"
           echo ""
       
-          echo "查询最近 2 次成功运行（按时间倒序）..."
+          echo "查询最近 3 次成功运行（按时间倒序）..."
           echo ""
           gh run list --workflow "${{ github.workflow }}" \
                       --branch "${{ github.ref_name }}" \
                       --status success \
-                      --limit 2 \
+                      --limit 3 \
                       --json databaseId,displayTitle,createdAt \
                       --jq 'to_entries[] | "\(.key): ID=\(.value.databaseId)  标题=\(.value.displayTitle)  创建时间=\(.value.createdAt)"'
           echo ""
@@ -229,25 +229,29 @@ jobs:
           echo "选中的上次成功运行 ID: ${PREV_RUN_ID:-无}"
           echo "============================================"
           echo ""
-          echo "查询该运行的所有 Artifact..."
-          # 列出所有 Artifact，显示名称、大小、过期时间
-          gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts" \
-            --jq '.artifacts[] | "名称: \(.name) | 大小: \(.size_in_bytes) 字节 | 过期: \(.expires_at)"'
-          
-          if [ $? -ne 0 ]; then
-            echo "⚠️ 无法获取 Artifact 列表（可能权限或运行不存在）"
-          else
-            # 检查是否有 RouterFirmware
-            FOUND=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts" \
-                     --jq '.artifacts[] | select(.name=="RouterFirmware") | .name')
-            if [ -z "$FOUND" ]; then
-              echo ""
-              echo "❌ 运行 $RUN_ID 中没有名为 RouterFirmware 的 Artifact"
-              echo "   可能是该次运行的编译/上传步骤实际未执行或被跳过"
+      
+          if [ -n "${PREV_RUN_ID}" ]; then
+            echo "查询该运行的所有 Artifact..."
+            # 列出所有 Artifact，显示名称、大小、过期时间
+            ARTIFACT_LIST=$(gh api "repos/${{ github.repository }}/actions/runs/${PREV_RUN_ID}/artifacts" \
+              --jq '.artifacts[] | "名称: \(.name) | 大小: \(.size_in_bytes) 字节 | 过期: \(.expires_at)"')
+            
+            if [ $? -ne 0 ]; then
+              echo "⚠️ 无法获取 Artifact 列表（可能运行不存在或权限不足）"
             else
-              echo "✅ 找到 RouterFirmware"
+              echo "$ARTIFACT_LIST"
+              # 检查是否有 RouterFirmware
+              FOUND=$(echo "$ARTIFACT_LIST" | grep -q "RouterFirmware" && echo "yes" || echo "no")
+              if [ "$FOUND" = "yes" ]; then
+                echo "✅ 找到 RouterFirmware"
+              else
+                echo "❌ 运行 ${PREV_RUN_ID} 中没有名为 RouterFirmware 的 Artifact"
+              fi
             fi
+          else
+            echo "未找到任何成功运行，跳过 Artifact 检查"
           fi
+      
           echo "run-id=${PREV_RUN_ID}" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------------------
