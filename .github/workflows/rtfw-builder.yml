@@ -201,13 +201,33 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "============================================"
+          echo "调试信息：获取上次成功运行"
+          echo "工作流名称: ${{ github.workflow }}"
+          echo "当前分支: ${{ github.ref_name }}"
+          echo "============================================"
+          echo ""
+      
+          echo "查询最近 2 次成功运行（按时间倒序）..."
+          echo ""
+          gh run list --workflow "${{ github.workflow }}" \
+                      --branch "${{ github.ref_name }}" \
+                      --status success \
+                      --limit 2 \
+                      --json databaseId,displayTitle,createdAt \
+                      --jq 'to_entries[] | "\(.key): ID=\(.value.databaseId)  标题=\(.value.displayTitle)  创建时间=\(.value.createdAt)"'
+          echo ""
+      
           PREV_RUN_ID=$(gh run list --workflow "${{ github.workflow }}" \
-            --branch "${{ github.ref_name }}" \
-            --status success \
-            --limit 2 \
-            --json databaseId \
-            --jq ".[1].databaseId")
-          echo "上次成功运行 ID: ${PREV_RUN_ID:-无}"
+                                    --branch "${{ github.ref_name }}" \
+                                    --status success \
+                                    --limit 2 \
+                                    --json databaseId \
+                                    --jq ".[1].databaseId")
+      
+          echo "============================================"
+          echo "选中的上次成功运行 ID: ${PREV_RUN_ID:-无}"
+          echo "============================================"
           echo "run-id=${PREV_RUN_ID}" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------------------
