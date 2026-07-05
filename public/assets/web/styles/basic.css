@@ -222,6 +222,15 @@ pre,
   color: var(--text-inverse);
 }
 
+/* 链接原文件路径样式 */
+.link-target {
+  color: #888;            /* 浅灰色文字 */
+  font-size: 0.85em;        /* 略小于正常文字 */
+  font-style: italic;       /* 斜体表示间接引用 */
+  margin-left: 0.3em;       /* 与文件名保持间距 */
+  user-select: all;         /* 方便点击复制路径 */
+}
+
 /* 文件大小和日期 */
 .size {
   text-align: right;

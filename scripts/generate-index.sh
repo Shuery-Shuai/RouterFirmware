@@ -79,57 +79,57 @@ readonly OUTPUT_FILE="${PUBLIC_DIR}/assets/web/data/index.json"
 #   scan_directory "/path/to/public/assets" "assets"
 #######################################
 scan_directory() {
-  local dir="$1"
-  local rel_path="${2:-.}"
-  local -a entries=()
+    local dir="$1"
+    local rel_path="${2:-.}"
+    local -a entries=()
 
-  # 跳过不需要索引的目录
-  [[ "${rel_path}" =~ ^\./(assets/web|source|scripts)(/|$) ]] && return
+    # 跳过不需要索引的目录
+    [[ "${rel_path}" =~ ^\./(assets/web|source|scripts)(/|$) ]] && return
 
-  # 使用 find 扫描目录内容，-print0 处理包含空格的文件名
-  while IFS= read -r -d '' item; do
-    local name
-    name=$(basename "${item}")
+    # 使用 find 扫描目录内容，-print0 处理包含空格的文件名
+    while IFS= read -r -d '' item; do
+        local name
+        name=$(basename "${item}")
 
-    # 跳过特殊文件和隐藏文件
-    [[ "${name}" =~ ^(index\.html|404\.html|search\.html|\.git.*|\..*|node_modules)$ ]] && continue
+        # 跳过特殊文件和隐藏文件
+        [[ "${name}" =~ ^(index\.html|404\.html|search\.html|\.git.*|\..*|node_modules)$ ]] && continue
 
-    # 构建相对路径
-    local item_path="${rel_path}/${name}"
-    [[ "${rel_path}" == "." ]] && item_path="${name}"
+        # 构建相对路径
+        local item_path="${rel_path}/${name}"
+        [[ "${rel_path}" == "." ]] && item_path="${name}"
 
-    if [[ -d "${item}" ]]; then
-      # 目录条目
-      local entry
-      entry=$(printf '{"type":"dir","name":"%s","path":"%s"}' \
-        "${name//\"/\\\"}" \
-        "${item_path//\"/\\\"}")
-      entries+=("${entry}")
-    elif [[ -f "${item}" ]]; then
-      # 文件条目：收集大小、修改时间、SHA256
-      local size mtime sha256
-      size=$(stat -c%s "${item}" 2>/dev/null || echo "0")
-      mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
-      sha256=$(sha256sum "${item}" 2>/dev/null | awk '{print $1}' || echo "")
+        if [[ -d "${item}" ]]; then
+            # 目录条目
+            local entry
+            entry=$(printf '{"type":"dir","name":"%s","path":"%s"}' \
+                "${name//\"/\\\"}" \
+                "${item_path//\"/\\\"}")
+            entries+=("${entry}")
+        elif [[ -f "${item}" ]]; then
+            # 文件条目：收集大小、修改时间、SHA256
+            local size mtime sha256
+            size=$(stat -c%s "${item}" 2>/dev/null || echo "0")
+            mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
+            sha256=$(sha256sum "${item}" 2>/dev/null | awk '{print $1}' || echo "")
 
-      local entry
-      entry=$(printf '{"type":"file","name":"%s","path":"%s","size":%s,"mtime":%s,"sha256":"%s"}' \
-        "${name//\"/\\\"}" \
-        "${item_path//\"/\\\"}" \
-        "${size}" "${mtime}" "${sha256}")
-      entries+=("${entry}")
+            local entry
+            entry=$(printf '{"type":"file","name":"%s","path":"%s","size":%s,"mtime":%s,"sha256":"%s"}' \
+                "${name//\"/\\\"}" \
+                "${item_path//\"/\\\"}" \
+                "${size}" "${mtime}" "${sha256}")
+            entries+=("${entry}")
+        fi
+    done < <(find -L "${dir}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
+
+    # 输出 JSON 数组元素（不含外层括号，由调用者组装）
+    if [[ ${#entries[@]} -gt 0 ]]; then
+        local first=true
+        for entry in "${entries[@]}"; do
+            [[ "${first}" == "true" ]] || echo ","
+            echo -n "${entry}"
+            first=false
+        done
     fi
-  done < <(find "${dir}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
-
-  # 输出 JSON 数组元素（不含外层括号，由调用者组装）
-  if [[ ${#entries[@]} -gt 0 ]]; then
-    local first=true
-    for entry in "${entries[@]}"; do
-      [[ "${first}" == "true" ]] || echo ","
-      echo -n "${entry}"
-      first=false
-    done
-  fi
 }
 
 #######################################
@@ -160,72 +160,82 @@ scan_directory() {
 #   generate_index "/path/to/public" "."
 #######################################
 generate_index() {
-  local dir="$1"
-  local rel_path="${2:-.}"
+    local dir="$1"
+    local rel_path="${2:-.}"
 
-  log INFO "扫描: ${rel_path}"
+    log INFO "扫描: ${rel_path}"
 
-  # 使用 find 扫描当前目录的直接子项
-  while IFS= read -r -d '' item; do
-    local name
-    name=$(basename "${item}")
+    # 使用 find 扫描当前目录的直接子项
+    while IFS= read -r -d '' item; do
+        local name
+        name=$(basename "${item}")
 
-    #######################################
-    # 应用跳过规则
-    #######################################
-    # 跳过特殊文件
-    [[ "${name}" =~ ^(index\.html|404\.html|search\.html|\.git.*|\..*|node_modules|source|scripts)$ ]] && continue
+        #######################################
+        # 应用跳过规则
+        #######################################
+        # 跳过特殊文件
+        [[ "${name}" =~ ^(index\.html|404\.html|search\.html|\.git.*|\..*|node_modules|source|scripts)$ ]] && continue
 
-    # 特殊处理 assets 目录：需要递归，但要跳过其下的 web 子目录
-    if [[ "${rel_path}" == "." && "${name}" == "assets" ]]; then
-      # assets 目录本身需要处理，跳过逻辑在递归时应用
-      :
-    elif [[ "${rel_path}" == "assets" && "${name}" == "web" ]]; then
-      # 跳过 assets/web 目录
-      continue
-    fi
+        # 特殊处理 assets 目录：需要递归，但要跳过其下的 web 子目录
+        if [[ "${rel_path}" == "." && "${name}" == "assets" ]]; then
+            # assets 目录本身需要处理，跳过逻辑在递归时应用
+            :
+        elif [[ "${rel_path}" == "assets" && "${name}" == "web" ]]; then
+            # 跳过 assets/web 目录
+            continue
+        fi
 
-    # 构建相对路径
-    local item_path="${rel_path}/${name}"
-    [[ "${rel_path}" == "." ]] && item_path="${name}"
+        # 构建相对路径
+        local item_path="${rel_path}/${name}"
+        [[ "${rel_path}" == "." ]] && item_path="${name}"
 
-    if [[ -d "${item}" ]]; then
-      #######################################
-      # 处理目录
-      #
-      # 输出目录本身的信息，然后递归扫描子目录。
-      #######################################
-      local mtime
-      mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
+        if [[ -d "${item}" ]]; then
+            #######################################
+            # 处理目录
+            #
+            # 输出目录本身的信息，然后递归扫描子目录。
+            #######################################
+            local mtime
+            mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
 
-      # 输出目录的 JSON 对象
-      printf '{"type":"dir","name":"%s","path":"%s","mtime":%s}\n' \
-        "${name//\"/\\\"}" \
-        "${item_path//\"/\\\"}" \
-        "${mtime}"
+            # 输出目录的 JSON 对象
+            if [[ -L "${item}" ]]; then
+                local target
+                target=$(readlink "${item}")
+                printf '{"type":"dir","name":"%s","path":"%s","mtime":%s,"target":"%s"}\n' \
+                    "${name//\"/\\\"}" \
+                    "${item_path//\"/\\\"}" \
+                    "${mtime}" \
+                    "${target//\"/\\\"}"
+            else
+                printf '{"type":"dir","name":"%s","path":"%s","mtime":%s}\n' \
+                    "${name//\"/\\\"}" \
+                    "${item_path//\"/\\\"}" \
+                    "${mtime}"
+            fi
 
-      # 递归扫描子目录
-      generate_index "${item}" "${item_path}"
+            # 递归扫描子目录
+            generate_index "${item}" "${item_path}"
 
-    elif [[ -f "${item}" ]]; then
-      #######################################
-      # 处理文件
-      #
-      # 收集文件的元数据：大小、修改时间、SHA256 哈希。
-      # SHA256 用于文件完整性验证和去重检测。
-      #######################################
-      local size mtime sha256
-      size=$(stat -c%s "${item}" 2>/dev/null || echo "0")
-      mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
-      sha256=$(sha256sum "${item}" 2>/dev/null | awk '{print $1}' || echo "")
+        elif [[ -f "${item}" ]]; then
+            #######################################
+            # 处理文件
+            #
+            # 收集文件的元数据：大小、修改时间、SHA256 哈希。
+            # SHA256 用于文件完整性验证和去重检测。
+            #######################################
+            local size mtime sha256
+            size=$(stat -c%s "${item}" 2>/dev/null || echo "0")
+            mtime=$(stat -c%Y "${item}" 2>/dev/null || echo "0")
+            sha256=$(sha256sum "${item}" 2>/dev/null | awk '{print $1}' || echo "")
 
-      # 输出文件的 JSON 对象
-      printf '{"type":"file","name":"%s","path":"%s","size":%s,"mtime":%s,"sha256":"%s"}\n' \
-        "${name//\"/\\\"}" \
-        "${item_path//\"/\\\"}" \
-        "${size}" "${mtime}" "${sha256}"
-    fi
-  done < <(find "${dir}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
+            # 输出文件的 JSON 对象
+            printf '{"type":"file","name":"%s","path":"%s","size":%s,"mtime":%s,"sha256":"%s"}\n' \
+                "${name//\"/\\\"}" \
+                "${item_path//\"/\\\"}" \
+                "${size}" "${mtime}" "${sha256}"
+        fi
+    done < <(find -L "${dir}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
 }
 
 #######################################
@@ -258,67 +268,67 @@ generate_index() {
 #   main
 #######################################
 main() {
-  log INFO "开始生成索引"
+    log INFO "开始生成索引"
 
-  # 切换到 public 目录，确保相对路径计算正确
-  cd "${PUBLIC_DIR}"
+    # 切换到 public 目录，确保相对路径计算正确
+    cd "${PUBLIC_DIR}"
 
-  # 创建输出目录（如果不存在）
-  mkdir -p assets/web/data
+    # 创建输出目录（如果不存在）
+    mkdir -p assets/web/data
 
-  #######################################
-  # 步骤 1: 扫描目录生成条目
-  #
-  # 将所有条目输出到临时文件，每行一个 JSON 对象。
-  #######################################
-  log INFO "扫描 public 目录"
-  local tmpfile
-  tmpfile=$(mktemp)
-  generate_index "." "." >"${tmpfile}"
+    #######################################
+    # 步骤 1: 扫描目录生成条目
+    #
+    # 将所有条目输出到临时文件，每行一个 JSON 对象。
+    #######################################
+    log INFO "扫描 public 目录"
+    local tmpfile
+    tmpfile=$(mktemp)
+    generate_index "." "." >"${tmpfile}"
 
-  #######################################
-  # 步骤 2: 组装最终 JSON 文件
-  #
-  # 结构:
-  #   {
-  #     "generated": <timestamp>,
-  #     "version": "1.0",
-  #     "items": [
-  #       <条目1>,
-  #       <条目2>,
-  #       ...
-  #     ]
-  #   }
-  #######################################
-  log INFO "生成 JSON 文件"
-  {
-    echo "{"
-    echo "  \"generated\": $(date +%s),"
-    echo "  \"version\": \"1.0\","
-    echo "  \"items\": ["
+    #######################################
+    # 步骤 2: 组装最终 JSON 文件
+    #
+    # 结构:
+    #   {
+    #     "generated": <timestamp>,
+    #     "version": "1.0",
+    #     "items": [
+    #       <条目1>,
+    #       <条目2>,
+    #       ...
+    #     ]
+    #   }
+    #######################################
+    log INFO "生成 JSON 文件"
+    {
+        echo "{"
+        echo "  \"generated\": $(date +%s),"
+        echo "  \"version\": \"1.0\","
+        echo "  \"items\": ["
 
-    # 读取临时文件中的每个 JSON 对象，用逗号分隔
-    local first=true
-    while IFS= read -r line; do
-      [[ -z "${line}" ]] && continue
-      [[ "${first}" == "true" ]] || echo ","
-      echo -n "    ${line}"
-      first=false
-    done <"${tmpfile}"
+        # 读取临时文件中的每个 JSON 对象，用逗号分隔
+        local first=true
+        while IFS= read -r line; do
+            [[ -z "${line}" ]] && continue
+            [[ "${first}" == "true" ]] || echo ","
+            echo -n "    ${line}"
+            first=false
+        done <"${tmpfile}"
 
-    echo ""
-    echo "  ]"
-    echo "}"
-  } >"${OUTPUT_FILE}"
+        echo ""
+        echo "  ]"
+        echo "}"
+    } >"${OUTPUT_FILE}"
 
-  #######################################
-  # 统计索引项数量
-  #######################################
-  local count
-  count=$(grep -c '^{' "${tmpfile}" 2>/dev/null || echo "0")
-  rm -f "${tmpfile}"
+    #######################################
+    # 统计索引项数量
+    #######################################
+    local count
+    count=$(grep -c '^{' "${tmpfile}" 2>/dev/null || echo "0")
+    rm -f "${tmpfile}"
 
-  log INFO "SUCCESS" "索引生成完成: ${OUTPUT_FILE} (${count} 项)"
+    log INFO "SUCCESS" "索引生成完成: ${OUTPUT_FILE} (${count} 项)"
 }
 
 # 执行主函数，传递所有命令行参数

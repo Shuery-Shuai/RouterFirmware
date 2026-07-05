@@ -80,7 +80,7 @@ patch_easyupdate() {
         -e "/sysupgrade\s+\\\$keepconfig\s*\\\$file/s/sysupgrade/sysupgrade -k/g" \
         -e "/^\s*file/s/\\\$\{checkShaRet/\/tmp\/\\\$\{checkShaRet/g" \
         -e "/Check\s+whether\s+EFI\s+firmware/,/^\s*fi/ {
-        /^\s+fi/a\	suffix='squashfs-sysupgrade.itb'
+        /^\s+fi/a\    suffix='squashfs-sysupgrade.itb'
         s/^/#/
       }" \
         -e "/^\s*function\s+checkSha/,/^\s*\}/ {

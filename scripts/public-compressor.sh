@@ -81,41 +81,41 @@ LOG_LEVEL="TRACE"
 #   main "custom.zip"
 #######################################
 main() {
-	# 解析命令行参数
-	declare -A PARSED_ARGS
-	parse_args "$@"
+    # 解析命令行参数
+    declare -A PARSED_ARGS
+    parse_args "$@"
 
-	# 处理帮助选项
-	if [[ -n "${PARSED_ARGS['h']:-}" || -n "${PARSED_ARGS['help']:-}" ]]; then
-		show_help "public-compressor.sh" \
-			"打包 public 目录为 zip 压缩包" \
-			"[options] [输出路径]" \
-			"  -h, --help              显示此帮助信息" \
-			"" \
-			"位置参数:" \
-			"  输出路径               zip 文件的保存位置 (默认: public.zip)"
-		exit 0
-	fi
+    # 处理帮助选项
+    if [[ -n "${PARSED_ARGS['h']:-}" || -n "${PARSED_ARGS['help']:-}" ]]; then
+        show_help "public-compressor.sh" \
+            "打包 public 目录为 zip 压缩包" \
+            "[options] [输出路径]" \
+            "  -h, --help              显示此帮助信息" \
+            "" \
+            "位置参数:" \
+            "  输出路径               zip 文件的保存位置 (默认: public.zip)"
+        exit 0
+    fi
 
-	# 获取输出文件路径（优先位置参数，否则默认）
-	local output_file="${PARSED_ARGS[_POSITIONAL_0]:-public.zip}"
+    # 获取输出文件路径（优先位置参数，否则默认）
+    local output_file="${PARSED_ARGS[_POSITIONAL_0]:-public.zip}"
 
-	# 验证 public 目录存在
-	require_dir "public" "public 目录不存在，请在仓库根目录执行此脚本"
+    # 验证 public 目录存在
+    require_dir "public" "public 目录不存在，请在仓库根目录执行此脚本"
 
-	# 压缩并处理错误
-	log INFO "正在压缩 public -> ${output_file} ..."
-	if zip -rq "${output_file}" "public"; then
-		log SUCCESS "压缩完成: $(realpath "${output_file}")"
-		echo ""
-		log INFO "=== 下一步操作 ==="
-		log INFO "1. 将 ${output_file} 上传到可公开访问的服务器"
-		log INFO "   - 或使用 './scripts/public-uploader.sh' 上传至 GitHub Release"
-		log INFO "2. 获取该文件的直链下载 URL"
-		log INFO "3. 在 GitHub Actions 手动触发 'Router Firmware Builder'，选择 upload-archive: true 并填入链接"
-	else
-		log FATAL "压缩过程失败，请检查磁盘空间或权限"
-	fi
+    # 压缩并处理错误
+    log INFO "正在压缩 public -> ${output_file} ..."
+    if zip -rq "${output_file}" "public"; then
+        log SUCCESS "压缩完成: $(realpath "${output_file}")"
+        echo ""
+        log INFO "=== 下一步操作 ==="
+        log INFO "1. 将 ${output_file} 上传到可公开访问的服务器"
+        log INFO "   - 或使用 './scripts/public-uploader.sh' 上传至 GitHub Release"
+        log INFO "2. 获取该文件的直链下载 URL"
+        log INFO "3. 在 GitHub Actions 手动触发 'Router Firmware Builder'，选择 upload-archive: true 并填入链接"
+    else
+        log FATAL "压缩过程失败，请检查磁盘空间或权限"
+    fi
 }
 
 # 执行主函数
