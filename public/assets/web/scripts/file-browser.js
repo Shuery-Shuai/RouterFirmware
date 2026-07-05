@@ -416,6 +416,20 @@ document.addEventListener("DOMContentLoaded", () => {
       // 按钮点击事件
       searchCurrentBtn.addEventListener("click", () => handleSearch("current"));
       searchGlobalBtn.addEventListener("click", () => handleSearch("global"));
+
+      // 刷新数据按钮
+      const refreshBtn = document.getElementById("refreshBtn");
+      refreshBtn.addEventListener("click", () => {
+        fetch("/assets/web/data/index.json?t=" + Date.now()) // 时间戳破坏缓存
+          .then((r) => r.json())
+          .then((data) => {
+            state.data = data;
+            renderFiles(state.currentPath); // 保持当前路径重新渲染
+          })
+          .catch((err) => {
+            alert("刷新失败：" + err.message);
+          });
+      });
     })
     .catch((err) => {
       document.getElementById("content").innerHTML =
