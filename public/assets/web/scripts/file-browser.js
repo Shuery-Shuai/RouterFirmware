@@ -168,20 +168,32 @@ function renderSearchResults(results, query, scope) {
 
 // 加载并渲染 README.md
 function loadReadme(path) {
-  const readmePath = path ? `/${path}/README.md` : "/README.md";
-  const readmeContainer = document.getElementById("readme");
+  const readmePath = path ? `${path}/README.md` : 'README.md'; // 索引中的相对路径（无前导斜杠）
+  const readmeContainer = document.getElementById('readme');
 
-  fetch(readmePath)
-    .then((response) => {
-      if (!response.ok) throw new Error("README not found");
+  // 1. 在索引中查找是否存在该 README.md 文件
+  const readmeItem = state.data.items.find(
+    item => item.type === 'file' && item.path === readmePath
+  );
+
+  // 2. 若索引中不存在，直接隐藏并退出（不发起请求）
+  if (!readmeItem) {
+    readmeContainer.style.display = 'none';
+    return;
+  }
+
+  // 3. 索引中存在，发起请求（可加上时间戳防止缓存）
+  fetch(`/${readmePath}?t=${Date.now()}`)
+    .then(response => {
+      if (!response.ok) throw new Error('README not found');
       return response.text();
     })
-    .then((markdown) => {
+    .then(markdown => {
       // 检查依赖是否加载
-      if (typeof window.markdownit === "undefined") {
-        console.error("markdown-it not loaded");
-        readmeContainer.innerHTML = "<pre>" + markdown + "</pre>";
-        readmeContainer.style.display = "block";
+      if (typeof window.markdownit === 'undefined') {
+        console.error('markdown-it not loaded');
+        readmeContainer.innerHTML = '<pre>' + markdown + '</pre>';
+        readmeContainer.style.display = 'block';
         return;
       }
 
@@ -191,30 +203,31 @@ function loadReadme(path) {
         linkify: true,
         typographer: true,
         highlight: function (str, lang) {
-          if (typeof hljs !== "undefined" && lang && hljs.getLanguage(lang)) {
+          if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
             try {
               return hljs.highlight(str, { language: lang }).value;
             } catch (__) {}
           }
-          return ""; // 使用默认转义
-        },
+          return ''; // 使用默认转义
+        }
       });
 
       // 添加 KaTeX 插件
-      if (typeof window.markdownitKatex !== "undefined") {
+      if (typeof window.markdownitKatex !== 'undefined') {
         md.use(window.markdownitKatex);
       }
 
       // 渲染 markdown
       readmeContainer.innerHTML = md.render(markdown);
-      readmeContainer.style.display = "block";
+      readmeContainer.style.display = 'block';
 
       // 为代码块添加复制按钮
       addCopyButtonsToCodeBlocks(readmeContainer);
     })
     .catch((err) => {
-      console.log("README not found:", err.message);
-      readmeContainer.style.display = "none";
+      // 这里仅作兜底处理，正常情况不会进入
+      console.log('README not found:', err.message);
+      readmeContainer.style.display = 'none';
     });
 }
 
