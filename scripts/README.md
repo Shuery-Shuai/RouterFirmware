@@ -24,6 +24,8 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **common.sh** - 共享工具库（日志、验证、参数解析等）
 - **copy-pre-files.sh** - 复制编译前文件
 - **copy-bin-files.sh** - 复制编译产物（支持 snapshots 和 releases 目录结构）
+- **public-compressor.sh** - 将 public 目录打包为 zip 压缩包
+- **public-uploader.sh** - 上传 zip 包到 GitHub Release 并返回直链，支持 Token / gh CLI 认证
 - **generate-index.sh** - 生成索引
 
 ## 使用方式
@@ -169,6 +171,60 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 
 功能：将编译产物分发到 public/ 目录（snapshots 直接复制，releases 按主次版本共享 packages）。
 
+#### public-compressor.sh
+
+```bash
+./public-compressor.sh [输出路径]
+./public-compressor.sh --help
+```
+
+示例：
+
+```bash
+./public-compressor.sh                          # 生成 public.zip
+./public-compressor.sh /tmp/firmware.zip        # 指定输出路径
+```
+
+功能：将仓库根目录下的 public 文件夹压缩为 zip 包，用于手动上传部署。
+
+#### public-uploader.sh
+
+```bash
+./public-uploader.sh [tag] [file]
+./public-uploader.sh [options]
+./public-uploader.sh --help
+```
+
+参数：
+
+- `tag` - 可选的 Release 标签，省略时自动生成 manual-upload-时间戳
+- `file` - 要上传的文件，默认 public.zip
+
+选项：
+
+- `--tag=TAG` - 指定 Release 标签
+- `--file=FILE` - 指定文件路径
+- `--token=TOKEN` - 直接提供 GitHub Token（不推荐）
+- `--help` - 显示帮助
+
+示例：
+
+```bash
+# 全自动：自动生成 tag，上传默认 public.zip
+./public-uploader.sh
+
+# 指定 tag
+./public-uploader.sh v1.0.0
+
+# 指定 tag 和文件
+./public-uploader.sh v1.0.0 /path/to/custom.zip
+
+# 使用命名参数
+./public-uploader.sh --tag=v1.0.0 --file=public.zip
+```
+
+功能：将打包好的 zip 上传到 GitHub Release，输出可直接用于手动部署工作流的直链下载地址。支持交互式选择认证方式（Token 或 gh CLI），自动创建 Release 时生成包含文件大小、修改时间等详细信息的 Markdown 描述。
+
 ## 编译产物目录结构
 
 ### Snapshots 版本
@@ -237,6 +293,9 @@ SOURCE_DIR="/tmp/openwrt"
 ./feeds-management.sh --source-dir="$SOURCE_DIR/immortalwrt" --firmware=immortalwrt
 ./config-management.sh --source-dir="$SOURCE_DIR/immortalwrt" --firmware=immortalwrt --version=snapshots --profile=bananapi_bpi-r4
 ./build.sh --source-dir="$SOURCE_DIR/immortalwrt"
+# 手动打包并上传到 GitHub Release，获取部署链接
+./public-compressor.sh
+./public-uploader.sh
 ```
 
 在脚本中使用变量：

@@ -65,6 +65,18 @@ on:
         description: "启用 SSH 调试（连接后无超时，调试结束跳过编译直接上传产物）"
         required: false
         default: "false"
+      upload-archive:
+        description: "直接上传 public 压缩包部署（跳过编译和索引生成）"
+        required: false
+        default: "false"
+      archive-url:
+        description: "public.zip 的下载 URL（仅当 upload-archive 为 true 时需要）"
+        required: false
+        default: ""
+      merge-history:
+        description: "是否合并云端历史产物（仅 upload-archive 为 true 时生效）"
+        required: false
+        default: "true"
 
 # ----------------------------- 全局环境变量 ----------------------------------
 env:
@@ -85,8 +97,22 @@ jobs:
     permissions:
       actions: write # 需要列出和删除工作流运行记录
     outputs:
-      device-name: ${{ steps.compile.outputs.device-name || steps.debug-compile.outputs.device-name }} # 传递给 deploy job
-      file-date: ${{ steps.compile.outputs.file-date || steps.debug-compile.outputs.file-date }} # 传递给 deploy job
+      # 传递给 deploy job
+      upload-archive: ${{ steps.config.outputs.upload-archive }}
+      archive-url: ${{ steps.config.outputs.archive-url }}
+      merge-history: ${{ steps.config.outputs.merge-history }}
+      device-name: >-
+        ${{
+          steps.compile.outputs.device-name ||
+          steps.debug-compile.outputs.device-name ||
+          steps.manual-upload.outputs.device-name
+        }}
+      file-date: >-
+        ${{
+          steps.compile.outputs.file-date ||
+          steps.debug-compile.outputs.file-date ||
+          steps.manual-upload.outputs.file-date
+        }}
 
     steps:
       # -----------------------------------------------------------------------
@@ -102,19 +128,30 @@ jobs:
           INPUT_ASK_MENUCONFIG: ${{ github.event.inputs.ask-menuconfig || github.event.client_payload.ask-menuconfig || 'false' }}
           INPUT_CACHE: ${{ github.event.inputs.cache || github.event.client_payload.cache || 'true' }}
           INPUT_DEBUG_SSH: ${{ github.event.inputs.debug-ssh || github.event.client_payload.debug-ssh || 'false' }}
+          INPUT_UPLOAD_ARCHIVE: ${{ github.event.inputs.upload-archive || github.event.client_payload.upload-archive || 'false' }}
+          INPUT_ARCHIVE_URL: ${{ github.event.inputs.archive-url || github.event.client_payload.archive-url || '' }}
+          INPUT_MERGE_HISTORY: ${{ github.event.inputs.merge-history || github.event.client_payload.merge-history || 'true' }}
         run: |
           echo "firmware=${INPUT_FIRMWARE}" >> $GITHUB_OUTPUT
           echo "version=${INPUT_VERSION}" >> $GITHUB_OUTPUT
           echo "profile=${INPUT_PROFILE}" >> $GITHUB_OUTPUT
           echo "ask-menuconfig=${INPUT_ASK_MENUCONFIG}" >> $GITHUB_OUTPUT
-          echo "use_cache=${INPUT_CACHE}" >> $GITHUB_OUTPUT
+          echo "use-cache=${INPUT_CACHE}" >> $GITHUB_OUTPUT
+          echo "debug-ssh=${INPUT_DEBUG_SSH}" >> $GITHUB_OUTPUT
+          echo "upload-archive=${INPUT_UPLOAD_ARCHIVE}" >> $GITHUB_OUTPUT
+          echo "archive-url=${INPUT_ARCHIVE_URL}" >> $GITHUB_OUTPUT
+          echo "merge-history=${INPUT_MERGE_HISTORY}" >> $GITHUB_OUTPUT
           # 打印最终生效的配置，方便调试
           echo "::group::Effective Configuration"
           echo "Firmware: ${INPUT_FIRMWARE}"
           echo "Version: ${INPUT_VERSION}"
           echo "Profile: ${INPUT_PROFILE}"
-          echo "Menuconfig: ${INPUT_ASK_MENUCONFIG}"
+          echo "AskMenuconfig: ${INPUT_ASK_MENUCONFIG}"
           echo "Cache: ${INPUT_CACHE}"
+          echo "DebugSSH: ${INPUT_DEBUG_SSH}"
+          echo "UploadArchive: ${INPUT_UPLOAD_ARCHIVE}"
+          echo "ArchiveURL: ${INPUT_ARCHIVE_URL}"
+          echo "MergeHistory: ${INPUT_MERGE_HISTORY}"
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
@@ -198,6 +235,7 @@ jobs:
       #         用于复用历史产物
       # -----------------------------------------------------------------------
       - name: 查找包含 RouterFirmware 的最近成功运行
+        if: steps.config.outputs.upload-archive != 'true' || ( steps.config.outputs.upload-archive == 'true' && steps.config.outputs.merge-history == 'true' )
         id: prev-run
         env:
           GH_TOKEN: ${{ github.token }}
@@ -238,7 +276,7 @@ jobs:
             --name RouterFirmware \
             --dir public-previous/ \
             --repo ${{ github.repository }}
-          
+
           if [ $? -eq 0 ]; then
             echo "✅ 历史产物下载成功"
             ls -lh public-previous/
@@ -263,9 +301,32 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
-      # 步骤 10: 调用脚本克隆指定固件类型的源代码
+      # 步骤 10: 下载手动上传的 public 压缩包至 public/。
+      # -----------------------------------------------------------------------
+      - name: 下载手动上传产物并解压压缩包
+        id: manual-upload
+        if: steps.config.outputs.upload-archive == 'true'
+        env:
+          ARCHIVE_URL: ${{ steps.config.outputs.archive-url }}
+        run: |
+          if [ -z "${ARCHIVE_URL}" ]; then
+            echo "错误：archive-url 不能为空"
+            exit 1
+          fi
+          echo "下载压缩包：${ARCHIVE_URL}"
+          curl -fsSL -o public.zip "${ARCHIVE_URL}"
+          mkdir -p public
+          unzip -qo public.zip -d public/
+          rm public.zip
+          echo "手动上传内容已就绪"
+          echo "device-name=manual-upload" >> $GITHUB_OUTPUT
+          echo "file-date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------------------------
+      # 步骤 11: 调用脚本克隆指定固件类型的源代码
       # -----------------------------------------------------------------------
       - name: 克隆固件源码
+        if: steps.config.outputs.upload-archive != 'true'
         run: |
           bash "$GITHUB_WORKSPACE/scripts/source-management.sh" \
             "$GITHUB_WORKSPACE/sources" \
@@ -273,11 +334,11 @@ jobs:
             "${{ steps.config.outputs.version }}"
 
       # -----------------------------------------------------------------------
-      # 步骤 11: 启用基于 GitHub Actions Cache 的编译缓存（ccache + 工具链）
+      # 步骤 12: 启用基于 GitHub Actions Cache 的编译缓存（ccache + 工具链）
       #         仅在用户选择启用缓存时执行
       # -----------------------------------------------------------------------
       - name: 启用构建缓存
-        if: steps.config.outputs.use_cache == 'true'
+        if: steps.config.outputs.use-cache == 'true' && steps.config.outputs.upload-archive != 'true'
         uses: klever1988/cachewrtbuild@main
         with:
           ccache: "true"
@@ -287,42 +348,42 @@ jobs:
           mixkey: ${{ steps.config.outputs.firmware }}-${{ steps.config.outputs.profile }}
 
       # -----------------------------------------------------------------------
-      # 步骤 12: 启用 SSH 调试，则启动 tmate 会话，允许用户连接调试环境。
+      # 步骤 13: 启用 SSH 调试，则启动 tmate 会话，允许用户连接调试环境。
       #         用户调试结束后手动结束会话，跳过编译直接上传产物。
       # -----------------------------------------------------------------------
       - name: SSH 调试会话
-        if: github.event.inputs.debug-ssh == 'true'
+        if: steps.config.outputs.debug-ssh == 'true'
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true # 仅允许触发者连接
 
       # -----------------------------------------------------------------------
-      # 步骤 13: 调试编译输出（仅调试 SSH 会话时执行），占位输出参数供后续步骤使用
+      # 步骤 14: 调试编译输出（仅调试 SSH 会话时执行），占位输出参数供后续步骤使用
       #         使用户在 SSH 调试后仍能体验到完整的工作流执行和产物上传过程
       # -----------------------------------------------------------------------
       - name: 调试编译输出
         id: debug-compile
-        if: github.event.inputs.debug-ssh == 'true' && !cancelled()
+        if: steps.config.outputs.debug-ssh == 'true' && !cancelled()
         run: |
           echo "status=success" >> $GITHUB_OUTPUT
           echo "device-name=${{ steps.config.outputs.profile }}" >> $GITHUB_OUTPUT
           echo "file-date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------------------
-      # 步骤 14: 执行固件编译脚本，并捕获输出状态和设备名、日期
+      # 步骤 15: 执行固件编译脚本，并捕获输出状态和设备名、日期
       # -----------------------------------------------------------------------
       - name: 编译固件
         id: compile
-        if: github.event.inputs.debug-ssh != 'true' # 非 SSH 调试模式才执行编译
+        if: steps.config.outputs.debug-ssh != 'true' && steps.config.outputs.upload-archive != 'true' # 非 SSH 调试模式才执行编译
         env:
           FIRMWARE: ${{ steps.config.outputs.firmware }}
           VERSION: ${{ steps.config.outputs.version }}
           PROFILE: ${{ steps.config.outputs.profile }}
-          ask-menuconfig: ${{ steps.config.outputs.ask-menuconfig }}
+          ASK_MENUCONFIG: ${{ steps.config.outputs.ask-menuconfig }}
         run: |
           chmod +x "$GITHUB_WORKSPACE/scripts/"*.sh
           cd "$GITHUB_WORKSPACE/scripts"
-          ./make.sh "$FIRMWARE" "$VERSION" "$PROFILE" "$ask-menuconfig" || {
+          ./make.sh "$FIRMWARE" "$VERSION" "$PROFILE" "$ASK_MENUCONFIG" || {
             echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           }
@@ -331,18 +392,23 @@ jobs:
           echo "file-date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------------------
-      # 步骤 15: 无论编译成功与否，输出磁盘使用情况（用于诊断空间问题）
+      # 步骤 16: 无论编译成功与否，输出磁盘使用情况（用于诊断空间问题）
       # -----------------------------------------------------------------------
       - name: 检查磁盘使用
         if: (!cancelled())
         run: df -hT
 
       # -----------------------------------------------------------------------
-      # 步骤 16: 上传整个 public/ 目录为 Artifact，供后续部署使用
+      # 步骤 17: 上传整个 public/ 目录为 Artifact，供后续部署使用
       # -----------------------------------------------------------------------
       - name: 上传构建产物
         uses: actions/upload-artifact@v7
-        if: ( steps.compile.outputs.status == 'success' || steps.debug-compile.outputs.status == 'success' ) && !cancelled()
+        if: >-
+          ( 
+            steps.compile.outputs.status == 'success' || 
+            steps.debug-compile.outputs.status == 'success' ||
+            steps.manual-upload.outputs.device-name != ''
+          ) && !cancelled()
         with:
           name: RouterFirmware
           path: ${{ github.workspace }}/public
@@ -350,7 +416,7 @@ jobs:
           overwrite: true
 
       # -----------------------------------------------------------------------
-      # 步骤 17: 清理过旧的工作流运行记录，保持仓库整洁
+      # 步骤 18: 清理过旧的工作流运行记录，保持仓库整洁
       #         仅保留最近 90 天且至少 7 条记录
       # -----------------------------------------------------------------------
       - name: 清理旧工作流运行
@@ -366,11 +432,15 @@ jobs:
   # =============================================================================
   deploy:
     runs-on: ubuntu-latest
-    needs: build # 必须等待 build 成功并输出 device-name
-    if: needs.build.outputs.device-name != ''
+    needs: build
+    if: needs.build.result == 'success' && !cancelled()
     env:
-      DEVICE_NAME: ${{ needs.build.outputs.device-name }}
-      FILE_DATE: ${{ needs.build.outputs.file-date }}
+      # 统一获取上传相关参数（兼容 workflow_dispatch 和 repository_dispatch）
+      UPLOAD_ARCHIVE: ${{ needs.build.outputs.upload-archive || 'false' }}
+      ARCHIVE_URL: ${{ needs.build.outputs.archive-url || '' }}
+      MERGE_HISTORY: ${{ needs.build.outputs.merge-history || '' }}
+      DEVICE_NAME: ${{ needs.build.outputs.device-name || '' }}
+      FILE_DATE: ${{ needs.build.outputs.file-date || '' }}
 
     permissions:
       pages: write # 允许部署 Pages
@@ -391,21 +461,42 @@ jobs:
       # 步骤 2: 下载 build job 上传的 RouterFirmware 产物到 public/
       # -----------------------------------------------------------------------
       - name: 下载构建产物
+        if: env.UPLOAD_ARCHIVE != 'true'
         uses: actions/download-artifact@v8
         with:
           name: RouterFirmware
           path: public/
 
       # -----------------------------------------------------------------------
-      # 步骤 3: 调用脚本生成固件文件索引页面
+      # 步骤 3: 下载用户上传的 public 压缩包 到 public/
+      # -----------------------------------------------------------------------
+      - name: 下载并解压用户上传的 public 压缩包
+        if: env.UPLOAD_ARCHIVE == 'true'
+        run: |
+          if [ -z "${ARCHIVE_URL}" ]; then
+            echo "错误：upload-archive 为 true 但未提供 archive-url"
+            exit 1
+          fi
+          echo "从 ${ARCHIVE_URL} 下载压缩包..."
+          curl -fsSL -o public.zip "${ARCHIVE_URL}"
+          echo "解压到 public/ ..."
+          mkdir -p public
+          unzip -qo public.zip -d public/
+          rm public.zip
+          echo "上传的 public 目录内容："
+          ls -la public/
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 调用脚本生成固件文件索引页面
       # -----------------------------------------------------------------------
       - name: 生成固件索引页
+        if: env.UPLOAD_ARCHIVE != 'true' || env.MERGE_HISTORY == 'true'
         run: |
           chmod +x "${{ github.workspace }}/scripts/generate-index.sh"
           "${{ github.workspace }}/scripts/generate-index.sh"
 
       # -----------------------------------------------------------------------
-      # 步骤 4: 将 public/ 目录打包为 Pages Artifact
+      # 步骤 5: 将 public/ 目录打包为 Pages Artifact
       # -----------------------------------------------------------------------
       - name: 上传 Pages 产物
         uses: actions/upload-pages-artifact@v5
@@ -413,7 +504,7 @@ jobs:
           path: public/
 
       # -----------------------------------------------------------------------
-      # 步骤 5: 执行部署，发布到 GitHub Pages
+      # 步骤 6: 执行部署，发布到 GitHub Pages
       # -----------------------------------------------------------------------
       - name: 部署到 GitHub Pages
         id: deployment
