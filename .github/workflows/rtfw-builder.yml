@@ -294,7 +294,12 @@ jobs:
         run: |
           mkdir -p public/
           if [ -d public-previous ]; then
-            rsync -av --exclude='assets/' public-previous/ public/
+            rsync -av \
+              --exclude='assets/' \
+              --exclude='404.html' \
+              --exclude='index.html' \
+              --exclude='search.html' \
+              public-previous/ public/
             rm -rf public-previous/
           else
             echo "未找到历史产物目录，跳过合并"
