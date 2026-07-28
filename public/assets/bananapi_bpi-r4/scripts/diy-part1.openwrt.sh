@@ -45,6 +45,16 @@ clone_repo 'https://github.com/anoixa/bpi-r4-pwm-fan' \
     '--depth=1' \
     'custom-packages/bpi-r4-pwm-fan'
 
+# Brainiac19 的 OpenWrt 软件包集合（稀疏克隆：fonts）
+clone_repo 'https://github.com/brainiac19/openwrt-packages' \
+    'main' \
+    '--filter=blob:none --sparse --depth=1' \
+    'custom-packages/brainiac19'
+(
+    cd 'custom-packages/brainiac19' || exit 1
+    git sparse-checkout set fonts
+)
+
 # ImmortalWrt LuCI 仓库（稀疏克隆：dae/daed）
 clone_repo 'https://github.com/immortalwrt/luci' \
     'master' \
