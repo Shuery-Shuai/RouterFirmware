@@ -18,7 +18,7 @@
 #        make -j$(nproc) V=s
 #
 # 注意事项：
-#   - 容器内默认为 root 用户（或镜像指定的非 root 用户），如遇权限问题，
+#   - 容器内默认为 immortalwrt 用户（或镜像指定的非 root 用户），如遇权限问题，
 #     可尝试启用 privileged 模式或设置 FORCE_UNSAFE_CONFIGURE 环境变量。
 #   - 为加快源码下载，建议使用 network_mode: host。
 #   - 编译非常消耗资源，请务必根据宿主机配置合理限制 CPU 和内存。
