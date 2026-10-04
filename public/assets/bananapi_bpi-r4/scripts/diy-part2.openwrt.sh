@@ -14,12 +14,12 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
-# shellcheck source=../../common/scripts/libs/functions.sh
-source "${SCRIPT_DIR}/libs/functions.sh"
+# shellcheck source=../../common/scripts/libs/index.sh
+source "${SCRIPT_DIR}/libs/index.sh"
 # shellcheck source=../../common/scripts/mods/index.sh
 source "${SCRIPT_DIR}/mods/index.sh"
 
-# shellcheck source=libs/functions.sh
+# shellcheck source=libs-bananapi_bpi-r4/functions.sh
 source "${SCRIPT_DIR}/libs-bananapi_bpi-r4/functions.sh"
 # shellcheck source=mods/index.sh
 source "${SCRIPT_DIR}/mods-bananapi_bpi-r4/index.sh"

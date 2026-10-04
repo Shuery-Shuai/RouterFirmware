@@ -10,14 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
 # 加载通用函数库（被复制到同级 libs/ 目录）
-# shellcheck source=../../common/scripts/libs/functions.sh
-source "${SCRIPT_DIR}/libs/functions.sh"
+# shellcheck source=../../common/scripts/libs/index.sh
+source "${SCRIPT_DIR}/libs/index.sh"
 # 加载通用修改索引（被复制到同级 mods/ 目录）
 # shellcheck source=../../common/scripts/mods/index.sh
 source "${SCRIPT_DIR}/mods/index.sh"
 
 # 加载设备专用函数库（被复制到 libs-bananapi_bpi-r4/）
-# shellcheck source=libs/functions.sh
+# shellcheck source=libs-bananapi_bpi-r4/functions.sh
 source "${SCRIPT_DIR}/libs-bananapi_bpi-r4/functions.sh"
 # 加载设备专用修改索引（被复制到 mods-bananapi_bpi-r4/）
 # shellcheck source=mods/index.sh
@@ -78,7 +78,11 @@ clone_repo 'https://github.com/sbwml/openwrt-qBittorrent' \
 
 clone_repo 'https://github.com/sundaqiang/openwrt-packages-backup' \
     'main' \
-    '--depth=1' \
+    '--filter=blob:none --sparse --depth=1' \
     'custom-packages/sundaqiang'
+(
+    cd 'custom-packages/sundaqiang' || exit 1
+    git sparse-checkout set luci/applications/luci-app-easyupdate
+)
 
 log INFO "Part 1 for ImmortalWrt completed."

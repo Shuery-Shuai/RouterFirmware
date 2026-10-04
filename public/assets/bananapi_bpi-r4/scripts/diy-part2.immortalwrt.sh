@@ -16,12 +16,12 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
-# shellcheck source=../../common/scripts/libs/functions.sh
-source "${SCRIPT_DIR}/libs/functions.sh"
+# shellcheck source=../../common/scripts/libs/index.sh
+source "${SCRIPT_DIR}/libs/index.sh"
 # shellcheck source=../../common/scripts/mods/index.sh
 source "${SCRIPT_DIR}/mods/index.sh"
 
-# shellcheck source=libs/functions.sh
+# shellcheck source=libs-bananapi_bpi-r4/functions.sh
 source "${SCRIPT_DIR}/libs-bananapi_bpi-r4/functions.sh"
 # shellcheck source=mods/index.sh
 source "${SCRIPT_DIR}/mods-bananapi_bpi-r4/index.sh"
@@ -47,13 +47,13 @@ modify_rust_build_config
 ensure_exec_permission 'files/usr/bin/restore-packages.sh'
 
 # 固定 dae 版本
-set_dae_version "2.0.0rc1" "d149f9c35fcc95d3a8c2f001294468833ba52d7b060d146d2a509257e0c96504"
+set_dae_version "2.0.0" "89853731fbc6ca60e4a68644e774fa45927fc53e7c05b19b9308fc938b1b98c2"
 
 # 修复 qbittorrent 依赖
 fix_qbittorrent_deps
 
 # 固定 fan2go 版本
-set_fan2go_version "0.15.0" "0bf10cd608c0a2fa55b9237267a7ff2c835697b77110a8d53a1711c07a067c0c"
+set_fan2go_version "0.15.0" auto
 
 # 修复 libnl-tiny 编译警告
 fix_libnl_tiny_compile

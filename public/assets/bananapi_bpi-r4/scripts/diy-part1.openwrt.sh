@@ -4,7 +4,7 @@
 #       1. 修改 BPI‑R4 分区布局
 #       2. 添加 XDP sockets 内核模块支持
 #       3. 克隆第三方软件包仓库（OpenWrt 特有列表）
-# 依赖: 通用库 common/scripts/libs/functions.sh
+# 依赖: 通用库 common/scripts/libs/index.sh
 #       设备库 bananapi_bpi-r4/scripts/libs/functions.sh
 #       通用修改索引 common/scripts/mods/index.sh
 #       设备修改索引 bananapi_bpi-r4/scripts/mods/index.sh
@@ -14,14 +14,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
 # 加载通用函数库（提供 log、clone_repo 等）
-# shellcheck source=../../common/scripts/libs/functions.sh
-source "${SCRIPT_DIR}/libs/functions.sh"
+# shellcheck source=../../common/scripts/libs/index.sh
+source "${SCRIPT_DIR}/libs/index.sh"
 # 加载通用修改索引（目前可能为空，预留给后续统一入口）
 # shellcheck source=../../common/scripts/mods/index.sh
 source "${SCRIPT_DIR}/mods/index.sh"
 
 # 加载 BPI‑R4 专用函数库（提供 modify_bpi_r4_partition）
-# shellcheck source=libs/functions.sh
+# shellcheck source=libs-bananapi_bpi-r4/functions.sh
 source "${SCRIPT_DIR}/libs-bananapi_bpi-r4/functions.sh"
 # 加载 BPI‑R4 专用修改索引（目前可能为空）
 # shellcheck source=mods/index.sh
