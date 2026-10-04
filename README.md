@@ -12,6 +12,7 @@
 - [项目特点](#项目特点)
 - [固件内置组件](#固件内置组件)
 - [支持安装的扩展包](#支持安装的扩展包)
+- [软件包签名密钥](#软件包签名密钥)
 - [快速开始](#快速开始)
 - [Docker 构建支持](#docker-构建支持)
 - [VS Code Dev Container](#vs-code-dev-container)
@@ -290,6 +291,41 @@
 >
 > 如需添加其他软件包支持，请在 [Issues](https://github.com/Shuery-Shuai/RouterFirmware/issues) 中提出需求。
 
+## 软件包签名密钥
+
+固件仓库中的软件包使用固定的 EC P-256 密钥签名。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/`，并发布到站点的 `/{firmware}/public-key.pem`。
+
+| 位置                                 | 说明                                                                    |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `keys/public-key.pem`                | 公钥，随仓库提交；构建时安装到镜像 `/etc/apk/keys/public-key.pem`       |
+| Actions Secret `APK_PRIVATE_KEY_B64` | 私钥（base64），CI 构建时还原到源码目录并与仓库内公钥校验               |
+| `keys/private-key.pem`               | 私钥的本地副本，供本地构建使用，已被 `.gitignore` 忽略                  |
+
+> [!CAUTION]
+>
+> `private-key.pem` 是包签名的信任根，持有者可以签出被本固件信任的 `.apk`。**切勿提交到仓库、粘贴到 Issue 或随产物分发**。如需轮换密钥，须同时更新 Secret 与 `keys/public-key.pem`，并通知用户重新导入公钥。
+
+### 配置密钥
+
+**GitHub Actions**：在仓库 `Settings → Secrets and variables → Actions` 中添加 `APK_PRIVATE_KEY_B64`。缺少该 secret 时 CI 会直接失败，避免发布出设备不信任的仓库。已有私钥可以这样编码：
+
+```bash
+openssl base64 -A -in keys/private-key.pem
+```
+
+**本地构建**：把私钥放到 `keys/private-key.pem`（权限 `600`）即可。`scripts/copy-pre-files.sh` 会自动安装密钥并校验指纹；两种来源都没有时仅告警，此时构建会生成一次性密钥。
+
+> [!IMPORTANT]
+>
+> 在固定密钥启用之前刷入的固件，需要手动导入公钥才能从本仓库安装软件包：
+>
+> ```sh
+> wget -O /etc/apk/keys/public-key.pem https://rtfw.shuery.lssa.fun/immortalwrt/public-key.pem
+> apk update
+> ```
+>
+> 或者直接刷写一次新固件（镜像内已自带该公钥）。apk 会信任 `/etc/apk/keys/` 下的所有密钥，因此新旧公钥可以共存。
+
 ## 快速开始
 
 ### 本地构建
@@ -503,21 +539,21 @@ RouterFirmware/
 │   ├── copy-bin-files.sh           # 复制编译产物
 │   └── generate-index.sh           # 生成文件索引
 ├── public/                         # 公共资源
-│   ├── assets/                     # 设备配置文件
-│   │   ├── bananapi_bpi-r4/        # BPI-R4 配置
-│   │   │   ├── diy-part1.sh        # DIY 脚本第一阶段
-│   │   │   ├── diy-part2.openwrt.sh
-│   │   │   └── diy-part2.immortalwrt.sh
+│   ├── assets/                     # 设备配置与脚本资源
+│   │   ├── bananapi_bpi-r4/        # BPI-R4 专属配置
+│   │   │   ├── configs/            # 内核与软件包配置
+│   │   │   └── scripts/            # DIY 脚本、设备专属 libs/mods
 │   │   └── common/                 # 通用配置
-│   │       └── files/              # 固件内置文件
-│   │           └── usr/bin/        # 系统工具脚本
-│   │               ├── restore-packages.sh
-│   │               └── replace-apk-source.sh
-│   └── firmware/                   # 构建产物输出目录（GitHub Pages 部署源）
+│   │       ├── files/              # 固件内置文件（usr/bin、hotplug 等）
+│   │       └── scripts/            # 通用 libs（按功能拆分）与 mods
+│   └── {firmware}/                 # 构建产物输出（GitHub Pages 部署源，构建时生成）
+├── keys/                           # 软件包签名密钥
+│   ├── public-key.pem              # 公钥（随仓库提交）
+│   └── private-key.pem             # 私钥本地副本（已被 .gitignore 忽略）
 ├── sources/                        # 源码目录（构建时生成）
 │   ├── immortalwrt/                # ImmortalWrt 源码
 │   └── openwrt/                    # OpenWrt 源码
-├── Dockerfile                      # Docker 构建镜像
+├── docker-compose.yml              # Docker 构建环境
 ├── .devcontainer/                  # VS Code Dev Container 配置
 └── README.md                       # 本文件
 ```
