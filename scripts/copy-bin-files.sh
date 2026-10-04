@@ -225,7 +225,9 @@ main() {
   # 复制签名公钥（可选）
   #
   # 如果源码目录中存在 public-key.pem，则复制到发布根目录。
-  # 用于固件签名验证 (usign)。
+  # 该公钥由 copy-pre-files.sh 从 keys/ 安装而来：它既是 opkg/usign 的
+  # 固件签名公钥，也是 apk 的仓库签名公钥（构建时写入镜像 /etc/apk/keys/），
+  # 发布到站点后供已刷机设备手动导入。
   #######################################
   if [[ -f "${src_dir}/public-key.pem" ]]; then
     cp "${src_dir}/public-key.pem" "public/${firmware}/public-key.pem"

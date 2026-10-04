@@ -44,6 +44,71 @@ readonly SCRIPT_DIR
 source "${SCRIPT_DIR}/common.sh"
 
 #######################################
+# 安装 APK 软件包签名密钥
+#
+# 将 apk 签名私钥还原到源码根目录并导出对应公钥。
+# 上游构建系统从 $(TOPDIR)/private-key.pem 取私钥签名，
+# 并把 $(TOPDIR)/public-key.pem 安装到镜像的 /etc/apk/keys/。
+#
+# 私钥来源（按优先级）:
+#   1. 环境变量 APK_PRIVATE_KEY_B64 - CI 使用，base64 编码
+#   2. keys/private-key.pem         - 本地构建使用
+#
+# 两者都缺失时本地构建仅告警（构建会生成一次性密钥），
+# CI 中则视为错误，避免发布出设备不信任的仓库。
+#
+# Arguments:
+#   $1 - 源码目录（绝对路径）
+#
+# Returns:
+#   0 - 已安装密钥，或本地构建未提供密钥
+#   1 - 密钥解码/导出失败，或与仓库内公钥不匹配
+#######################################
+install_apk_signing_key() {
+  local dst_dir="$1"
+  local key_dir="${SCRIPT_DIR}/../keys"
+  local pub_key_src="${key_dir}/public-key.pem"
+  local priv_key_dst="${dst_dir}/private-key.pem"
+  local pub_key_dst="${dst_dir}/public-key.pem"
+
+  if [[ -n "${APK_PRIVATE_KEY_B64:-}" ]]; then
+    log INFO "从 APK_PRIVATE_KEY_B64 还原 APK 签名私钥"
+    if ! (umask 077; printf '%s' "${APK_PRIVATE_KEY_B64}" | base64 -d >"${priv_key_dst}") 2>/dev/null &&
+      ! (umask 077; printf '%s' "${APK_PRIVATE_KEY_B64}" | base64 -D >"${priv_key_dst}") 2>/dev/null; then
+      log FATAL "APK_PRIVATE_KEY_B64 解码失败"
+      return 1
+    fi
+  elif [[ -f "${key_dir}/private-key.pem" ]]; then
+    log INFO "使用本地私钥: ${key_dir}/private-key.pem"
+    (umask 077; cp "${key_dir}/private-key.pem" "${priv_key_dst}")
+  else
+    log WARN "未提供 APK 签名私钥（APK_PRIVATE_KEY_B64 或 keys/private-key.pem）"
+    log WARN "构建将生成一次性签名密钥，已刷机设备会因 UNTRUSTED signature 无法安装软件包"
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      log FATAL "CI 构建必须提供仓库 secret APK_PRIVATE_KEY_B64"
+      return 1
+    fi
+    return 0
+  fi
+
+  chmod 600 "${priv_key_dst}"
+  if ! openssl ec -in "${priv_key_dst}" -pubout >"${pub_key_dst}" 2>/dev/null; then
+    log FATAL "无法从私钥导出公钥，请确认密钥为 EC 格式"
+    return 1
+  fi
+  if [[ -f "${pub_key_src}" ]] && ! diff -q "${pub_key_dst}" "${pub_key_src}" >/dev/null; then
+    log FATAL "私钥与仓库内 keys/public-key.pem 不匹配"
+    return 1
+  fi
+
+  local fingerprint
+  fingerprint="$(openssl ec -in "${priv_key_dst}" -pubout -outform DER 2>/dev/null |
+    openssl dgst -sha256 -r | cut -d' ' -f1)"
+  log INFO "APK 签名密钥已安装: ${fingerprint}"
+  return 0
+}
+
+#######################################
 # 主函数
 #
 # 执行配置文件复制流程：
@@ -200,6 +265,13 @@ main() {
   fi
 
   log INFO "已同步: 额外文件"
+
+  #######################################
+  # 安装 APK 软件包签名密钥
+  #######################################
+  if ! install_apk_signing_key "${dst_dir}"; then
+    exit 1
+  fi
 
   log INFO "SUCCESS" "配置文件复制完成"
 }

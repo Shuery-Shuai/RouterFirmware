@@ -385,6 +385,7 @@ jobs:
           VERSION: ${{ steps.config.outputs.version }}
           PROFILE: ${{ steps.config.outputs.profile }}
           ASK_MENUCONFIG: ${{ steps.config.outputs.ask-menuconfig }}
+          APK_PRIVATE_KEY_B64: ${{ secrets.APK_PRIVATE_KEY_B64 }}
         run: |
           chmod +x "$GITHUB_WORKSPACE/scripts/"*.sh
           cd "$GITHUB_WORKSPACE/scripts"
