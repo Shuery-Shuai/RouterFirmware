@@ -23,6 +23,21 @@
 set -euo pipefail
 
 #######################################
+# 运行环境检查
+#
+# 本项目多处依赖 bash 4.0+ 特性（关联数组 declare -A、${var,,} 小写展开等），
+# 在更旧的 bash 上会以难以定位的报错中断（例如 macOS 自带的 bash 3.2 会把
+# 关联数组下标当算术表达式求值，报出 "Jan: unbound variable"）。
+# 这里提前拦截并给出可操作的提示。
+#######################################
+if ((${BASH_VERSINFO[0]:-0} < 4)); then
+  printf '错误: 本项目脚本需要 bash 4.0 或更高版本，当前为 %s\n' "${BASH_VERSION}" >&2
+  printf '  macOS 自带的 bash 为 3.2，请安装新版后重试: brew install bash\n' >&2
+  printf '  或改用 Docker / Dev Container 进行构建。\n' >&2
+  exit 1
+fi
+
+#######################################
 # 日志级别常量
 #
 # 用于设置和比较日志级别，数值越小级别越低。
@@ -219,18 +234,38 @@ log() {
 }
 
 #######################################
-# 月份英文缩写到中文的映射表
+# 将英文月份缩写转换为中文月份
 #
 # 用于将英文日期格式转换为中文日期格式。
+# 这里刻意不使用关联数组，以免在旧版 bash 上因下标求值而报出
+# 难以理解的错误。
 #
-# Globals:
-#   MONTHS - 关联数组，键为英文月份缩写，值为中文月份
+# Arguments:
+#   $1 - 英文月份缩写 (Jan..Dec)
+#
+# Outputs:
+#   中文月份到 stdout；无法识别时输出 "00月"
+#
+# Returns:
+#   0 - 总是成功
 #######################################
-declare -r -A MONTHS=(
-  [Jan]="01月" [Feb]="02月" [Mar]="03月" [Apr]="04月"
-  [May]="05月" [Jun]="06月" [Jul]="07月" [Aug]="08月"
-  [Sep]="09月" [Oct]="10月" [Nov]="11月" [Dec]="12月"
-)
+month_to_cn() {
+  case "$1" in
+  Jan) printf '01月' ;;
+  Feb) printf '02月' ;;
+  Mar) printf '03月' ;;
+  Apr) printf '04月' ;;
+  May) printf '05月' ;;
+  Jun) printf '06月' ;;
+  Jul) printf '07月' ;;
+  Aug) printf '08月' ;;
+  Sep) printf '09月' ;;
+  Oct) printf '10月' ;;
+  Nov) printf '11月' ;;
+  Dec) printf '12月' ;;
+  *) printf '00月' ;;
+  esac
+}
 
 #######################################
 # HTML 特殊字符转义
@@ -283,7 +318,7 @@ format_file_date() {
   local en_date month day time year
   en_date=$(LC_TIME=C date -r "${filepath}" '+%b %d %H:%M:%S %Y')
   read -r month day time year <<<"${en_date}"
-  echo "${year}年 ${MONTHS[${month}]:-00月} ${day}日 ${time}"
+  echo "${year}年 $(month_to_cn "${month}") ${day}日 ${time}"
 }
 
 #######################################
@@ -308,7 +343,7 @@ format_current_date() {
   local en_date month day time year
   en_date=$(LC_TIME=C date '+%b %d %H:%M:%S %Y')
   read -r month day time year <<<"${en_date}"
-  echo "${year}年 ${MONTHS[${month}]:-00月} ${day}日 ${time}"
+  echo "${year}年 $(month_to_cn "${month}") ${day}日 ${time}"
 }
 
 #######################################
