@@ -5,7 +5,7 @@
 #       2. 移除 uhttpd 依赖（luci-light）
 #       3. 替换默认主题为 luci-theme-argon（luci-light, luci-nginx）
 #       4. 修复 package-manager 行尾的反斜杠续行符（luci, luci-ssl, luci-ssl-openssl）
-# 依赖: 需要预先 source common/scripts/libs/functions.sh
+# 依赖: 需要预先 source common/scripts/libs/index.sh
 #       （提供 modify_luci_collection 函数和 log 函数）
 #       若未加载，脚本内置后备日志函数
 # 用法:
@@ -61,7 +61,7 @@ apply_luci_collection_patches() {
         modify_luci_collection 'feeds/luci/collections/luci/Makefile' \
             -e '/LUCI_DEPENDS/,/^$/ { /luci-app-attendedsysupgrade/d; s/luci-app-package-manager\s*\\/luci-app-package-manager/g; }'
     else
-        log ERROR "modify_luci_collection function not found. Please source common/scripts/libs/functions.sh first."
+        log ERROR "modify_luci_collection function not found. Please source common/scripts/libs/index.sh first."
         return 1
     fi
 

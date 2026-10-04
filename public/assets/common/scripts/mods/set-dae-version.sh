@@ -2,20 +2,28 @@
 # 文件: common/scripts/mods/set-dae-version.sh
 # 用途: 修改 dae 软件包的版本、源地址和哈希值，用于固定特定版本或升级
 #       自动处理版本号中的 rc/beta 后缀，生成符合 OpenWrt 规范的 PKG_VERSION
-# 依赖: 需要预先 source common/scripts/libs/functions.sh 以使用 log 函数
+#       支持自动检查 GitHub 最新 release 并更新
+# 依赖: 需要预先 source common/scripts/libs/index.sh 以使用 log / normalize_pkg_version / compare_versions / set_makefile_vars / download_and_hash 等函数
 #       若单独使用，脚本内置了日志后备
 # 用法:
 #   source common/scripts/mods/set-dae-version.sh
 #   set_dae_version <version> <hash> [makefile_path]
+#   set_dae_version --auto-update [makefile_path]
+#   set_dae_version -u [makefile_path]
+#   set_dae_version -u --pre-release [makefile_path]  # 包含预发布版本
 #
 # 参数:
 #   version       : 目标版本号，如 1.1.0rc1, 2.0.0rc1, 1.1.0 (不含 v 前缀)
-#   hash          : 对应的源代码包 SHA256 哈希值 (必需)
+#   hash          : 对应的源代码包 SHA256 哈希值 (必需；设为 auto 可自动计算)
 #   makefile_path : dae 的 Makefile 路径，默认为 feeds/packages/net/dae/Makefile
+#   --auto-update / -u : 启用自动更新，检查 GitHub 最新 release，若有新版本则更新
+#   --pre-release / -p : 包含预发布版本
 #
 # 示例:
 #   set_dae_version "1.1.0rc1" "726a049813a4d5b800c441ea76ff0ce1846596c180fba0e8ec920a129b3b6e0a"
-#   set_dae_version "2.0.0rc1" "abc123..." "custom-packages/packages/net/dae/Makefile"
+#   set_dae_version "2.0.0rc1" "auto" "custom-packages/packages/net/dae/Makefile"
+#   set_dae_version --auto-update
+#   set_dae_version -u -p feeds/packages/net/dae/Makefile
 #######################################
 
 if ! type -t log &>/dev/null; then
@@ -34,15 +42,15 @@ fi
 #   将 dae 锁定到指定的版本，并自动处理版本号后缀（rc -> _rc）。
 #   URL 根据版本号自动生成，遵循官方下载链接格式。
 #
-# Arguments:
+# 参数：
 #   $1 - 版本号（如 "1.1.0rc1"）
 #   $2 - 源代码包的 SHA256 哈希值
 #   $3 - Makefile 路径（可选，默认 feeds/packages/net/dae/Makefile）
 #
-# Outputs:
+# 输出：
 #   操作日志到 stderr
 #
-# Returns:
+# 返回：
 #   0 - 修改成功
 #   0 - 文件不存在时仅输出警告
 #   1 - 缺少必需参数或哈希值为空
@@ -52,7 +60,7 @@ set_dae_version() {
     local hash="$2"
     local makefile="${3:-feeds/packages/net/dae/Makefile}"
 
-    if [[ -z "${raw_version}" || -z "${hash}" ]]; then
+    if [[ -z "${raw_version}" ]]; then
         log ERROR "Usage: set_dae_version <version> [hash|auto] [makefile_path]"
         return 1
     fi
@@ -101,7 +109,32 @@ set_dae_version() {
     log INFO "dae version set successfully."
 }
 
-# 直接执行时需提供参数（否则报错）
+auto_update_dae() {
+    local include_pre_release=0
+    local makefile=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --pre-release | -p)
+            include_pre_release=1
+            shift
+            ;;
+        *)
+            makefile="$1"
+            shift
+            break
+            ;;
+        esac
+    done
+    makefile="${makefile:-feeds/packages/net/dae/Makefile}"
+    auto_update_package "daeuniverse/dae" "${makefile}" set_dae_version "" "${include_pre_release}"
+}
+
+# 脚本入口（仅在直接执行时生效；被 source 时不做任何事）
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    set_dae_version "$@"
+    if [[ "${1:-}" == "--auto-update" || "${1:-}" == "-u" ]]; then
+        shift
+        auto_update_dae "$@"
+    else
+        set_dae_version "$@"
+    fi
 fi
