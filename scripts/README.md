@@ -166,7 +166,11 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 
 - 完整配置文件（`<firmware>.config`）只由人工维护，脚本从不回写；
 - 差异配置文件（`<firmware>.<version>.diff.config`）用于保证构建期配置一致，**允许不保存**，因此其覆盖提示默认取否；
-- 目标差异文件不存在时会直接落盘，并在日志中提示需人工确认后纳入版本控制。
+- 目标差异文件不存在时会直接落盘，并在日志中提示需人工确认后纳入版本控制；
+- 生成物是"相对上游构建系统默认配置"的**完整 overlay**（上游 `scripts/diffconfig.sh` 忽略传入参数），
+  不是与 `.config.defconfig` 的逐项 diff——回写它可完整复现目标配置，属预期行为；
+- 编译缓存 ccache 由脚本自动启用：检测到 `ccache` 命令时幂等写入 `CONFIG_CCACHE=y`，
+  缺失时仅告警（不阻断构建，也不再静默跳过）。
 
 #### build.sh
 
@@ -182,7 +186,8 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ./build.sh --source-dir=./sources/immortalwrt
 ```
 
-功能：多线程下载源码包，多线程编译固件（失败时自动回退到单线程）。
+功能：多线程下载源码包并编译固件；失败后先做并行重试、再回退单线程详细模式
+（`--retry-count` / `--serial-retry-count` 可调，重试前会做执行位自检）。
 
 #### copy-pre-files.sh
 
@@ -214,7 +219,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ./copy-bin-files.sh --firmware=openwrt --version=23.05.2
 ```
 
-功能：将编译产物分发到 public/ 目录（snapshots 直接复制，releases 按主次版本共享 packages）。
+功能：将编译产物分发到 public/ 目录（snapshots 直接复制，releases 按**完整版本号**隔离存放）。
 
 #### public-compressor.sh
 
@@ -284,24 +289,20 @@ public/immortalwrt/snapshots/
 
 ### Releases 版本
 
-releases 版本采用共享目录结构，相同主次版本（MAJOR.MINOR）的 packages 共享存储：
+releases 版本的 packages 与 targets 一样，按**完整版本号**隔离存放：
 
 ```pre
 public/immortalwrt/releases/
 ├── 25.12.0/
 │   ├── targets/                    # 版本特定的固件
-│   └── packages -> ../packages-25.12/  (符号链接)
-├── 25.12.1/
-│   ├── targets/
-│   └── packages -> ../packages-25.12/
-├── 24.10.6/
-│   ├── targets/
-│   └── packages -> ../packages-24.10/
-├── packages-25.12/                 # 25.12.x 系列共享包库
-└── packages-24.10/                 # 24.10.x 系列共享包库
+│   └── packages/                   # 该版本的软件包
+└── 25.12.1/
+    ├── targets/
+    └── packages/
 ```
 
-**优点**：节省存储空间（相同主次版本不重复存储 packages）、同主次版本复用已编译的 packages。
+**为什么不按主次版本共享 packages**：GitHub Pages 没有服务端符号链接，artifact 打包会把软链展开
+成实体副本，"共享"不会省下任何体积，反而多一层间接；因此 packages 与 targets 同样按完整版本号存放。
 
 ## 构建流程
 

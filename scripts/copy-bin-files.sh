@@ -2,19 +2,14 @@
 #######################################
 # OpenWrt/ImmortalWrt 编译产物复制脚本
 #
-# 将编译完成的固件文件从源码目录复制到发布目录，支持两种版本布局:
-#   1. snapshots 版本: 直接复制 targets 和 packages
-#   2. releases 版本: targets 按版本号隔离，packages 按主次版本共享
+# 将编译完成的固件文件从源码目录复制到发布目录：
+#   snapshots 版本 → public/<firmware>/snapshots/{targets,packages}/...
+#   releases  版本 → public/<firmware>/releases/<版本>/{targets,packages}/...
 #
-# 目录结构示例:
-#   snapshots:
-#     public/immortalwrt/snapshots/targets/...
-#     public/immortalwrt/snapshots/packages/...
-#
-#   releases:
-#     public/immortalwrt/releases/25.12.0/targets/...
-#     public/immortalwrt/releases/packages-25.12/...  (多个修订版共享)
-#     public/immortalwrt/releases/25.12.0/packages -> ../packages-25.12 (符号链接)
+# 说明：站点托管在 GitHub Pages 上——没有服务端软链，且 upload-pages-artifact
+# 使用 tar --dereference 会把软链展开成实体副本。因此这里不再创建
+# releases/packages-<主次版本> 共享目录与符号链接，packages 直接与 targets
+# 同级落盘（与镜像内 apk 源 URL 的 releases/<版本>/packages/... 对应）。
 #
 # 用法:
 #   ./copy-bin-files.sh [FIRMWARE] [VERSION]
@@ -49,36 +44,11 @@ readonly SCRIPT_DIR
 source "${SCRIPT_DIR}/common.sh"
 
 #######################################
-# 从完整版本号提取主次版本
-#
-# 将三段式版本号 (MAJOR.MINOR.PATCH) 截断为两段 (MAJOR.MINOR)，
-# 用于确定 packages 的共享目录名称。
-#
-# Arguments:
-#   $1 - 完整版本号 (格式: MAJOR.MINOR.PATCH)
-#
-# Outputs:
-#   主次版本号 (MAJOR.MINOR) 到 stdout
-#
-# Returns:
-#   0 - 总是成功
-#
-# Examples:
-#   _get_major_minor_version "25.12.0"  # 输出: 25.12
-#   _get_major_minor_version "24.10.6"  # 输出: 24.10
-#######################################
-_get_major_minor_version() {
-  local version="$1"
-  # 使用参数扩展移除最后一个 . 及其后的内容
-  echo "${version%.*}"
-}
-
-#######################################
 # 主函数 - 复制编译产物到发布目录
 #
-# 根据版本类型选择不同的复制策略:
-#   - snapshots: 完全独立的 targets 和 packages
-#   - releases: targets 独立，packages 按主次版本共享（节省空间）
+# 两种版本类型的落盘位置：
+#   - snapshots: public/<firmware>/snapshots/{targets,packages}
+#   - releases:  public/<firmware>/releases/<版本>/{targets,packages}
 #
 # Arguments:
 #   $@ - 命令行参数（支持位置参数或命名参数）
@@ -100,9 +70,8 @@ _get_major_minor_version() {
 #
 # Files Modified:
 #   public/${firmware}/${version}/targets/     - 固件镜像文件
-#   public/${firmware}/${version}/packages/    - 软件包文件 (snapshots) 或符号链接 (releases)
-#   public/${firmware}/releases/packages-X.Y/  - 共享软件包目录 (仅 releases)
-#   public/${firmware}/public-key.pem          - 签名公钥 (如果存在)
+#   public/${firmware}/${version}/packages/    - 软件包文件（与 targets 同级）
+#   public/assets/common/keys/public-key.pem  - 签名公钥（只此一份，所有固件共用）
 #######################################
 main() {
   # 解析命令行参数
@@ -181,57 +150,47 @@ main() {
     #######################################
     # Releases 版本处理
     #
-    # 策略:
-    #   1. targets 按完整版本号隔离 (每个版本独立目录)
-    #   2. packages 按主次版本共享 (同一大版本的修订版共用)
-    #   3. 在版本目录中创建符号链接指向共享 packages
+    # targets 与 packages 都按完整版本号隔离存放：
+    #   releases/<版本>/targets/...
+    #   releases/<版本>/packages/...
     #
-    # 优势:
-    #   - 节省磁盘空间 (25.12.0/1/2 共享 packages-25.12)
-    #   - 保持版本目录结构清晰
+    # 不再创建 releases/packages-<主次版本> 共享目录与符号链接（Pages 无服务端
+    # 软链，artifact 打包会把软链展开成实体副本，共享只会白占一份体积）。
     #######################################
     log DEBUG "处理 releases 版本"
 
-    # 提取主次版本号 (如 25.12.0 -> 25.12)
-    local major_minor_version
-    major_minor_version=$(_get_major_minor_version "${version}")
-    local packages_shared="${dst_base}/releases/packages-${major_minor_version}"
-
-    # 复制 targets 到版本特定目录
     mkdir -p "${dst_dir}"
-    log DEBUG "复制 targets 目录到 ${dst_dir}/targets"
+    log DEBUG "复制 targets 与 packages 到 ${dst_dir}/"
     cp -r "${src_dir}/bin/targets" "${dst_dir}/"
-
-    # 处理共享 packages 目录
-    # 仅在首次遇到该主次版本时复制，后续修订版跳过
-    if [[ ! -d "${packages_shared}" ]]; then
-      log DEBUG "首次该主次版本，复制 packages 到 ${packages_shared}"
-      mkdir -p "$(dirname "${packages_shared}")"
-      cp -r "${src_dir}/bin/packages" "${packages_shared}"
-      log INFO "已创建共享 packages 目录: packages-${major_minor_version}"
+    if [[ -d "${src_dir}/bin/packages" ]]; then
+      cp -r "${src_dir}/bin/packages" "${dst_dir}/"
+      log INFO "已复制: targets 和 packages（版本目录内）"
     else
-      log DEBUG "共享 packages 目录已存在，跳过复制"
+      log WARN "源码树中不存在 bin/packages，跳过 packages 复制"
     fi
-
-    # 在版本目录中创建相对符号链接指向共享 packages
-    # 链接路径: releases/25.12.0/packages -> ../packages-25.12
-    log DEBUG "创建 packages 符号链接: ${dst_dir}/packages → packages-${major_minor_version}"
-    mkdir -p "${dst_dir}"
-    ln -sf "../packages-${major_minor_version}" "${dst_dir}/packages"
-    log INFO "已创建符号链接: ${version}/packages → packages-${major_minor_version}"
   fi
 
   #######################################
   # 复制签名公钥（可选）
   #
   # 如果源码目录中存在 public-key.pem，则复制到发布根目录。
-  # 该公钥由 copy-pre-files.sh 从 keys/ 安装而来：它既是 opkg/usign 的
-  # 固件签名公钥，也是 apk 的仓库签名公钥（构建时写入镜像 /etc/apk/keys/），
-  # 发布到站点后供已刷机设备手动导入。
+  # 该公钥由 copy-pre-files.sh 从 keys/ 安装而来，是 **apk 仓库签名**公钥
+  # （EC P-256，与 OpenWrt 的 BUILD_KEY_APK_PUB 对应，构建时写入镜像
+  # /etc/apk/keys/ 作为信任锚），发布到站点后供已刷机设备手动导入。
+  # 注意：它不用于 usign/opkg 体系——那套需要 ed25519 密钥，算法不同。
   #######################################
   if [[ -f "${src_dir}/public-key.pem" ]]; then
-    cp "${src_dir}/public-key.pem" "public/${firmware}/public-key.pem"
-    log INFO "已复制: public-key.pem"
+    # 公钥只发布一份：所有固件共用同一密钥对，按固件各存一份曾导致分叉
+    # （站点上实测出现过两个不同指纹）。旧路径残留必须显式清除，否则 CI 会把
+    # 上一轮产物 rsync 合并回来，废弃公钥会永久留在站点上。
+    mkdir -p "public/assets/common/keys"
+    cp "${src_dir}/public-key.pem" "public/assets/common/keys/public-key.pem"
+    log INFO "已复制: assets/common/keys/public-key.pem"
+    local stale_key
+    for stale_key in public/*/public-key.pem; do
+      [[ -e "${stale_key}" ]] || continue
+      rm -f "${stale_key}" && log INFO "已移除旧路径公钥: ${stale_key}"
+    done
   else
     log DEBUG "public-key.pem 不存在，跳过"
   fi

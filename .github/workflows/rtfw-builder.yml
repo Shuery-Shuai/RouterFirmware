@@ -21,7 +21,7 @@
 #   cache            - 是否启用编译缓存 (true / false)，默认 true
 #
 # 输出:
-#   - 编译产物 (Artifact): RouterFirmware，保留 7 天
+#   - 编译产物 (Artifact): RouterFirmware，保留 90 天
 #   - 部署至 GitHub Pages 的静态网站，包含固件文件列表
 # =============================================================================
 
@@ -272,22 +272,25 @@ jobs:
       # 步骤 8: 下载上一次运行的 Artifact (允许失败，以便首次运行不中断)
       # -----------------------------------------------------------------------
       - name: 下载历史构建产物
+        id: download-previous
         if: steps.prev-run.outputs.run-id != ''
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "从运行 ${{ steps.prev-run.outputs.run-id }} 下载产物..."
-          gh run download ${{ steps.prev-run.outputs.run-id }} \
+          # 注意：run 块以 bash -e 执行，此前靠 `$?` 判断是永远不会执行到的死代码；
+          # 而且失败后 public-previous/ 会残留半成品，被下一步 rsync 进 public/ 再删除。
+          if gh run download ${{ steps.prev-run.outputs.run-id }} \
             --name RouterFirmware \
             --dir public-previous/ \
-            --repo ${{ github.repository }}
-
-          if [ $? -eq 0 ]; then
+            --repo ${{ github.repository }}; then
             echo "✅ 历史产物下载成功"
             ls -lh public-previous/
+            echo "downloaded=true" >>"$GITHUB_OUTPUT"
           else
-            echo "⚠️ 下载失败，继续执行后续步骤"
+            echo "⚠️ 下载失败：清除半成品目录并跳过历史合并（避免发布残缺站点）"
+            rm -rf public-previous/
+            echo "downloaded=false" >>"$GITHUB_OUTPUT"
           fi
 
       # -----------------------------------------------------------------------
@@ -296,7 +299,7 @@ jobs:
       #         若临时目录不存在（首次运行或下载失败），则优雅跳过。
       # -----------------------------------------------------------------------
       - name: 合并历史产物
-        if: steps.prev-run.outputs.run-id != ''
+        if: steps.download-previous.outputs.downloaded == 'true'
         run: |
           mkdir -p public/
           if [ -d public-previous ]; then

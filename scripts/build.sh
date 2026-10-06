@@ -131,9 +131,17 @@ main() {
   # 交叉工具链的 cc1，后者表现为内核报 "unknown C compiler"）。开局与每次重试前都跑。
   repair_exec_bits() {
     local files=()
-    local f
+    local f prefix
     while IFS= read -r f; do
-      [[ -n "${f}" ]] && files+=("${f}")
+      [[ -z "${f}" ]] && continue
+      # 只修真正的可执行文件（ELF 或带 shebang 的脚本）。usr/bin 下同时存在
+      # .conf/.cmake 之类数据文件，给它们加执行位无用也不干净（实测 29 个"修复"里
+      # 混着 target_qt.conf 这类文件）。
+      prefix=""
+      IFS= read -r -n 4 prefix <"${f}" 2>/dev/null || true
+      if [[ "${prefix}" == $'\x7fELF' || "${prefix}" == '#!'* ]]; then
+        files+=("${f}")
+      fi
     done < <(find "${source_dir}/staging_dir" -type f \
       \( -path '*/bin/*' -o -path '*/libexec/*' -o -path '*/sbin/*' \) ! -perm -u+x 2>/dev/null)
 

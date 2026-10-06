@@ -39,9 +39,9 @@
 
 - **智能参数解析**：同时支持手动输入、外部 API 调用和默认值
 - **历史产物复用**：下载上一次成功构建的产物，跳过 `assets/` 目录，加速增量编译
-- **缓存加速**：可选的 ccache + 工具链缓存，大幅缩短重复构建时间
+- **缓存加速**：编译缓存 ccache（脚本自动启用，环境需有 `ccache` 命令）+ 工具链缓存，缩短重复构建时间
 - **自动部署**：编译成功后，固件及索引页自动发布到 GitHub Pages
-- **运行记录清理**：自动保留最近 7 天的工作流日志
+- **运行记录清理**：自动保留最近 90 天的工作流日志（且至少保留 7 条）
 
 ## 支持设备
 
@@ -293,7 +293,7 @@
 
 ## 软件包签名密钥
 
-固件仓库中的软件包使用固定的 EC P-256 密钥签名。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/`，并发布到站点的 `/{firmware}/public-key.pem`。
+固件仓库中的软件包使用固定的 EC P-256 密钥签名。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/`，并**只发布一份**到站点的 `/assets/common/keys/public-key.pem`（所有固件共用同一密钥对）。
 
 | 位置                                 | 说明                                                                    |
 | ------------------------------------ | ----------------------------------------------------------------------- |
@@ -320,7 +320,7 @@ openssl base64 -A -in keys/private-key.pem
 > 在固定密钥启用之前刷入的固件，需要手动导入公钥才能从本仓库安装软件包：
 >
 > ```sh
-> wget -O /etc/apk/keys/public-key.pem https://rtfw.shuery.lssa.fun/immortalwrt/public-key.pem
+> wget -O /etc/apk/keys/public-key.pem https://rtfw.shuery.lssa.fun/assets/common/keys/public-key.pem
 > apk update
 > ```
 >
@@ -394,9 +394,25 @@ docker run --rm -it \
 ### Docker 构建说明
 
 - **磁盘空间**: 建议至少 50GB 可用空间
-- **内存**: 建议 8GB 以上
+- **内存**: 建议 8GB 以上（`-j` 并行度按核数自动取，内存紧张时用 `--jobs=4` 之类降并行）
 - **网络**: 首次构建需从 GitHub 克隆源码，耗时较长
-- **持久化**: 源码和构建产物会保存在宿主机当前目录
+- **持久化**: 源码与构建产物均保存在宿主机当前目录；其中**构建树 `sources/` 位于 Docker 卷 `rtfw-build`**
+
+> [!IMPORTANT]
+> macOS 上 Docker Desktop 通过 virtiofs 暴露宿主目录，元数据操作会偶发失败（实测会导致
+> `ninja`/`cc1` 丢可执行位、`gnulib` 安装失败、git 误报 dubious ownership），且失败会静默
+> 留下坏产物。因此 `sources/` 走具名卷（Docker VM 内 ext4），仅 `public/`、`keys/`、`scripts/`
+> 走绑定挂载。
+>
+> 首次迁移（仓库根目录执行，改动 compose 之前）：
+>
+> ```bash
+> docker volume create rtfw-build
+> docker run --rm -v "$PWD/sources:/from:ro" -v rtfw-build:/to \
+>   debian:12 bash -c 'cp -a /from/. /to/ && chown -R 1000:1000 /to'
+> ```
+>
+> Linux 主机（ext4/xfs）不存在该类问题，但同样适用此结构。
 
 ## VS Code Dev Container
 
@@ -441,7 +457,7 @@ docker run --rm -it \
 | `scripts/copy-pre-files.sh`    | 复制编译前配置：DIY 脚本、配置文件 |
 | `scripts/build.sh`             | 执行编译：多线程编译、错误处理     |
 | `scripts/copy-bin-files.sh`    | 复制产物：固件、哈希、元数据       |
-| `scripts/generate-index.sh`    | 生成索引：JSON 格式的文件列表      |
+| `scripts/verify-site-structure.sh` | 发布前校验：站点目录结构守门      |
 
 ### DIY 自定义脚本
 
@@ -537,7 +553,7 @@ RouterFirmware/
 │   ├── copy-pre-files.sh           # 复制编译前文件
 │   ├── build.sh                    # 执行编译
 │   ├── copy-bin-files.sh           # 复制编译产物
-│   └── generate-index.sh           # 生成文件索引
+│   └── verify-site-structure.sh    # 发布前校验站点目录结构
 ├── public/                         # 公共资源
 │   ├── assets/                     # 设备配置与脚本资源
 │   │   ├── bananapi_bpi-r4/        # BPI-R4 专属配置
