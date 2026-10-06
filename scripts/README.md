@@ -26,7 +26,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **copy-bin-files.sh** - 复制编译产物（支持 snapshots 和 releases 目录结构）
 - **public-compressor.sh** - 将 public 目录打包为 zip 压缩包
 - **public-uploader.sh** - 上传 zip 包到 GitHub Release 并返回直链，支持 Token / gh CLI 认证
-- **generate-index.sh** - 生成索引
+- **verify-site-structure.sh** - 发布前校验站点目录结构（守门）
 
 ## 使用方式
 
@@ -54,6 +54,9 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 # 命名参数
 ./make.sh --firmware=TYPE --version=VER --profile=PROF --ask-menuconfig=BOOL
 
+# 布尔选项可省略取值：--ask-menuconfig 等价于 --ask-menuconfig=true
+./make.sh --firmware=openwrt --ask-menuconfig
+
 # 混合使用
 ./make.sh immortalwrt --version=snapshots --profile=bananapi_bpi-r4
 ```
@@ -63,7 +66,42 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - `firmware` - 固件类型，默认 `immortalwrt`（支持: openwrt, immortalwrt）
 - `version` - 版本号，默认 `snapshots`
 - `profile` - 设备 profile，默认 `bananapi_bpi-r4`
-- `ask-menuconfig` - 是否在编译前询问运行 menuconfig，默认 `false`
+- `ask-menuconfig` - 是否在编译前询问运行 menuconfig，默认 `false`（仅 TTY 环境下会真正询问）
+- `--non-interactive` - 强制非交互：提示一律取默认值，无 TTY 时自动生效
+- `--prompt-timeout=SEC` - 交互提示超时秒数，`0` 表示永不超时，默认 `60`
+- `--no-log-file` - 关闭文件日志（默认：本地开启并写入 `logs/build-<时间戳>.log`，CI 关闭）
+- `--capture-build-log[=PATH]` - 留存 `make` 原始输出（默认：本地开启并写入 `logs/build-<时间戳>.make.log`，CI 关闭）
+- `--no-capture-build-log` - 关闭原始输出留存（磁盘紧张时使用）
+- `--allow-diy-failure` - 允许 `diy-part1/2.sh` 失败后继续（默认：失败即终止构建）
+
+交互提示的三态语义（menuconfig 与差异配置保存均适用）：
+
+| 场景 | 取值 |
+| ---- | ---- |
+| 非 TTY（CI / docker 无 `-it`） | 一律取安全默认（不运行 menuconfig、不覆盖差异配置） |
+| TTY + 回车 | 取提示语里的大写默认值（`[Y/n]` → 运行，`[y/N]` → 保留） |
+| TTY + 超时 | 与回车相同，并在日志中记录超时 |
+
+### 构建失败诊断
+
+编译失败时脚本会自动补齐"失败现场"，避免 FATAL 旁边只有硬编码路径：
+
+1. **收割 OpenWrt 自己的失败日志**：列出 `sources/<firmware>/logs/` 中**本次构建新增**的文件并打印各自尾部
+   （例如 `logs/package/feeds/packages/<pkg>/dump.txt`）。镜像组装、签名等阶段失败时不会留下这类日志，
+   此时会明确提示"OpenWrt 未产生失败日志目录"。
+2. **打印留存文件位置与尾部**：`logs/build-<时间戳>.make.log` 含下载、并行编译、单线程重试的完整原始输出
+   （本地默认开启，CI 关闭以免占用 runner 的 14GB 磁盘）。
+
+失败时的输出形如：
+
+```text
+[💀 FATAL] [build] 单线程重试仍然失败
+[🚫 ERROR] [build] 本轮运行日志: .../logs/build-20261005_153929.log
+[🚫 ERROR] [build] 构建原始输出: .../logs/build-20261005_153929.make.log（尾部 40 行）
+    ...（make 原始输出尾部）...
+[🚫 ERROR] [build] OpenWrt 失败现场: .../logs/package/feeds/packages/<pkg>/dump.txt
+    ...（dump.txt 尾部）...
+```
 
 示例：
 
@@ -112,6 +150,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ```bash
 ./config-management.sh <source_dir> <firmware> <version> <profile> [ask-menuconfig]
 ./config-management.sh --source-dir=PATH --firmware=TYPE --version=VER --profile=PROF --ask-menuconfig=BOOL
+./config-management.sh --source-dir=PATH --ask-menuconfig --prompt-timeout=0
 ```
 
 示例：
@@ -122,6 +161,12 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ```
 
 功能：生成默认配置（make defconfig）、生成 customfeeds.list、应用 diff.config、可选运行 menuconfig。
+
+说明：
+
+- 完整配置文件（`<firmware>.config`）只由人工维护，脚本从不回写；
+- 差异配置文件（`<firmware>.<version>.diff.config`）用于保证构建期配置一致，**允许不保存**，因此其覆盖提示默认取否；
+- 目标差异文件不存在时会直接落盘，并在日志中提示需人工确认后纳入版本控制。
 
 #### build.sh
 

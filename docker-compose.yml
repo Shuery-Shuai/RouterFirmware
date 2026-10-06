@@ -43,6 +43,13 @@ services:
     volumes:
       # 将当前宿主机目录（即本文件所在目录）挂载到容器内的工作目录
       - .:/home/immortalwrt/workdir
+      # 构建树放入 Docker 具名卷（不走 macOS 共享挂载）：
+      #   macOS 上 Docker Desktop 用 virtiofs 暴露宿主目录，元数据操作会偶发失败——
+      #   实测会导致 ninja / cc1 丢执行位、gnulib 安装失败（cp -p EPERM）、
+      #   git 误报 dubious ownership，而且失败会静默留下坏产物（戳记却标记完成）。
+      #   卷位于 Docker VM 的本地文件系统，语义完整，同时显著加快编译。
+      #   注意：迁移前需把原 sources/ 拷进该卷（见 README 的迁移说明）。
+      - rtfw-build:/home/immortalwrt/workdir/sources
 
     # ---------- 工作目录 ----------
     working_dir: /home/immortalwrt/workdir # 进入容器后的默认路径，即源码根目录
@@ -93,3 +100,14 @@ services:
     # 如果你的编译过程需要挂载 loop 设备、创建文件系统镜像或执行 mount 操作，
     # 且遇到“Operation not permitted”之类的权限错误，可取消下面这行的注释。
     # privileged: true
+
+# =============================================================================
+# 具名卷
+# =============================================================================
+# 构建树（sources/）存放在卷上而非宿主目录，避免 macOS 文件共享层（virtiofs/osxfs）
+# 的元数据抖动；卷名固定为 rtfw-build，迁移命令见 README。
+volumes:
+  rtfw-build:
+    # 由迁移脚本预先创建（见 README 的迁移说明），Compose 只使用不创建
+    external: true
+    name: rtfw-build
