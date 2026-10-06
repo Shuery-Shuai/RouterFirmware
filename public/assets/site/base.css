@@ -1,0 +1,14 @@
+/* 站点基础样式（不含字体与 README 组件样式）
+ *
+ * 所有页面都引入本文件；字体（base64 内联）与 README 组件样式在 site.css 里，
+ * 只有需要渲染 README 说明块的页面才引入，避免每个列表页都下载 450+ KB 的字体。
+ */
+
+/* 语言切换：.container 的直接子元素，右对齐在标题上方一行。
+   （不用 float：标题很长时会绕排；也不用 div：官方 .container>div 会把它当卡片） */
+.site-lang { text-align: right; font-size: 90%; margin: 0.2em 0 0.6em; }
+.site-lang a { color: inherit; text-decoration: none; opacity: 0.85; }
+.site-lang a:hover { opacity: 1; }
+/* 语言切换图标「文A」：字形实现（无外部资源），A 略小并轻微上移，读起来像翻译图标 */
+.site-lang .lang-icon { font-size: 1.05em; line-height: 1; letter-spacing: -0.02em; }
+.site-lang .lang-icon .lang-a { font-size: 0.82em; vertical-align: 0.06em; margin-left: 0.05em; }

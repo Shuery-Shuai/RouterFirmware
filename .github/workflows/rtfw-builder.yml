@@ -294,8 +294,8 @@ jobs:
           fi
 
       # -----------------------------------------------------------------------
-      # 步骤 9: 将历史产物合并到 public/，但明确排除 assets 目录，
-      #         防止覆盖本次构建可能已修改的重要文件。
+      # 步骤 9: 将历史产物合并到 public/，但明确排除 assets 目录与站点级文件，
+      #         防止旧产物覆盖本次签出的新版（图标随仓库提交，历史产物里也有）。
       #         若临时目录不存在（首次运行或下载失败），则优雅跳过。
       # -----------------------------------------------------------------------
       - name: 合并历史产物
@@ -308,6 +308,9 @@ jobs:
               --exclude='404.html' \
               --exclude='index.html' \
               --exclude='search.html' \
+              --exclude='favicon.svg' \
+              --exclude='favicon.ico' \
+              --exclude='apple-touch-icon.png' \
               public-previous/ public/
             rm -rf public-previous/
           else

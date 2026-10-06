@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img">
+<title>RouterFirmware</title>
+<rect x="0" y="0" width="32" height="32" rx="7" fill="#002B49"/>
+<rect x="9.4" y="6.4" width="2.4" height="7.4" rx="1.2" fill="#fff"/>
+<rect x="20.2" y="6.4" width="2.4" height="7.4" rx="1.2" fill="#fff"/>
+<rect x="4.6" y="12.8" width="22.8" height="13.6" rx="2.4" fill="#fff"/>
+<rect x="7.2" y="16.4" width="3" height="6.4" rx="0.55" fill="#00A3E1"/>
+<rect x="11" y="16.4" width="3" height="6.4" rx="0.55" fill="#00A3E1"/>
+<rect x="18" y="16.4" width="3" height="6.4" rx="0.55" fill="#00A3E1"/>
+<rect x="21.8" y="16.4" width="3" height="6.4" rx="0.55" fill="#00A3E1"/>
+</svg>

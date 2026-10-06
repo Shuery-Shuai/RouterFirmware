@@ -1,99 +1,45 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text x=%2250%%22 y=%2250%%22 style=%22dominant-baseline:central;text-anchor:middle;font-size:90px;%22>⚙️</text></svg>"
-    />
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8'/>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'/>
+<link rel='stylesheet' href='https://downloads.immortalwrt.org/openwrt.css' />
+<link rel='stylesheet' href='/assets/site/base.css?v=3f02b000' />
+<link rel='icon' href='/favicon.svg?v=dcfe7415' type='image/svg+xml'/>
+<link rel='icon' href='/favicon.ico' sizes='any'/>
+<link rel='apple-touch-icon' href='/apple-touch-icon.png'/>
+<meta name='theme-color' content='#002B49'/>
+<title data-zh="RouterFirmware 固件下载（本地预览）" data-en="Firmware Downloads">Firmware Downloads</title>
+</head>
 
-    <!-- 主题样式 -->
-    <link rel="stylesheet" href="/assets/web/styles/theme.css" />
-    <link rel="stylesheet" href="/assets/web/styles/layout.css" />
-    <link rel="stylesheet" href="/assets/web/styles/basic.css" />
-    <link rel="stylesheet" href="/assets/web/styles/settings-modal.css" />
-
-    <!-- GitHub Markdown 样式 -->
-    <link
-      rel="stylesheet"
-      href="https://fastly.jsdelivr.net/npm/github-markdown-css@5.9.0/github-markdown-light.css"
-      media="(prefers-color-scheme: light)"
-    />
-    <link
-      rel="stylesheet"
-      href="https://fastly.jsdelivr.net/npm/github-markdown-css@5.9.0/github-markdown-dark.css"
-      media="(prefers-color-scheme: dark)"
-    />
-
-    <!-- Highlight.js 代码高亮 -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css"
-      media="(prefers-color-scheme: light)"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
-      media="(prefers-color-scheme: dark)"
-    />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
-
-    <!-- KaTeX 数学公式 -->
-    <link
-      rel="stylesheet"
-      href="https://fastly.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css"
-      integrity="sha384-vlBdW0r3AcZO/HboRPznQNowvexd3fY8qHOWkBi5q7KGgqJ+F48+DceybYmrVbmB"
-      crossorigin="anonymous"
-    />
-    <script
-      defer
-      src="https://fastly.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.js"
-      integrity="sha384-AtrdNsnxl/75rvBneBVH7DtOvCxSVahR2zWqle1coBKd8DEmLoviqNeJSx64gNAs"
-      crossorigin="anonymous"
-    ></script>
-
-    <!-- Markdown-it -->
-    <script
-      src="https://fastly.jsdelivr.net/npm/markdown-it@14.3.0/dist/markdown-it.min.js"
-      integrity="sha256-cP4XvQbH+oGfA6HtEJV5BDGBA2JBmIRdyJOzCb9JXig="
-      crossorigin="anonymous"
-    ></script>
-    <script src="https://fastly.jsdelivr.net/npm/markdown-it-katex@2.0.3/index.min.js"></script>
-
-    <!-- 自定义脚本 -->
-    <script src="/assets/web/scripts/theme.js"></script>
-    <script src="/assets/web/scripts/file-browser.js"></script>
-
-    <title>RouterFirmware - 文件浏览器</title>
-  </head>
-  <body>
-    <div class="container">
-      <h1>RouterFirmware 文件浏览器</h1>
-      <div id="breadcrumb" class="breadcrumb"></div>
-      <div class="search-box">
-        <input
-          type="text"
-          id="searchInput"
-          class="search-input"
-          placeholder="搜索文件或目录..."
-        />
-        <div class="search-buttons">
-          <button id="searchCurrentBtn">🔎 搜索当前目录</button>
-          <button id="searchGlobalBtn">🔍 全局搜索</button>
-          <button id="refreshBtn" title="强制刷新数据">🔄 刷新数据</button>
-        </div>
-      </div>
-      <div id="searchInfo" class="search-info"></div>
-      <hr />
-      <div id="content">
-        <div class="loading">正在加载...</div>
-      </div>
-      <div
-        id="readme"
-        class="readme-container markdown-body"
-        style="display: none"
-      ></div>
-    </div>
-  </body>
+<body>
+<div class="container">
+<p class="site-lang"><a id="lang-toggle" href="#" title="English" aria-label="English"><span class="lang-icon" aria-hidden="true">文<span class="lang-a">A</span></span></a></p>
+<h1><span data-zh="RouterFirmware 固件下载（本地预览）" data-en="Firmware Downloads">RouterFirmware 固件下载（本地预览）</span></h1>
+<p><span data-zh="Banana Pi BPI-R4 的 OpenWrt / ImmortalWrt 构建产物与软件包仓库。" data-en="Build artifacts and package repositories for Banana Pi BPI-R4 (OpenWrt / ImmortalWrt).">Banana Pi BPI-R4 的 OpenWrt / ImmortalWrt 构建产物与软件包仓库。</span></p>
+<div>
+<h2>ImmortalWrt</h2>
+<h3><span data-zh="开发快照" data-en="Development Snapshots">开发快照</span></h3>
+<ul>
+<li><span data-zh="随上游更新，可能不稳定" data-en="tracking upstream, may be unstable">随上游更新，可能不稳定</span>：<strong><a href="/immortalwrt/snapshots/targets/">snapshots</a></strong></li>
+</ul>
+<p><small><span data-zh="软件包仓库公钥" data-en="Package repository public key">软件包仓库公钥</span>：<a href="/assets/common/keys/public-key.pem">/assets/common/keys/public-key.pem</a></small></p>
+<p><small><a href="/immortalwrt/"><span data-zh="浏览该发行版的全部文件" data-en="Browse all files of this firmware">浏览该发行版的全部文件</span></a></small></p>
+<hr/>
+<h2>OpenWrt</h2>
+<h3><span data-zh="开发快照" data-en="Development Snapshots">开发快照</span></h3>
+<ul>
+<li><span data-zh="随上游更新，可能不稳定" data-en="tracking upstream, may be unstable">随上游更新，可能不稳定</span>：<strong><a href="/openwrt/snapshots/targets/">snapshots</a></strong></li>
+</ul>
+<p><small><span data-zh="软件包仓库公钥" data-en="Package repository public key">软件包仓库公钥</span>：<a href="/assets/common/keys/public-key.pem">/assets/common/keys/public-key.pem</a></small></p>
+<p><small><a href="/openwrt/"><span data-zh="浏览该发行版的全部文件" data-en="Browse all files of this firmware">浏览该发行版的全部文件</span></a></small></p>
+<hr/>
+<h2><span data-zh="构建脚本与配置" data-en="Build scripts and configs">构建脚本与配置</span></h2><p><span data-zh="设备脚本、配置与说明文档位于" data-en="Device scripts, configs and docs live under">设备脚本、配置与说明文档位于</span> <a href="/assets/">/assets/</a>。</p>
+</div>
+<footer>
+<span data-zh="本页由构建流程自动生成，内容来自 config/site.json。" data-en="This page is generated at build time from config/site.json.">本页由构建流程自动生成，内容来自 config/site.json。</span>
+</footer>
+</div>
+<script src='/assets/site/site.js?v=bb3a69c5' defer></script>
+</body>
 </html>
