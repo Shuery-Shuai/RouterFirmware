@@ -206,7 +206,11 @@ _pull_current_branch() {
   [[ -z "${branch}" ]] && return 0
 
   log INFO "更新分支 ${branch}"
-  timeout "${GIT_NETWORK_TIMEOUT}" git pull --ff-only || log WARN "git pull --ff-only 失败"
+  if timeout "${GIT_NETWORK_TIMEOUT}" git pull --ff-only; then
+    return 0
+  fi
+  log WARN "git pull --ff-only 失败（网络、分叉或存在本地改动）"
+  return 1
 }
 
 #######################################
@@ -288,12 +292,26 @@ _switch_to_target() {
   if [[ "${current_ref}" == "${target}" ]]; then
     # 已在目标版本
     if timeout 3 git symbolic-ref --short HEAD >/dev/null 2>&1; then
-      # 在分支上：先尝试直接 pull，失败后重置到远程分支再 pull
+      # 在分支上：先尝试直接 pull；失败后仅在"工作区干净"时才允许 reset --hard 自愈
       log INFO "在分支 ${target}，尝试更新"
       if ! _pull_current_branch; then
-        log WARN "git pull 失败，尝试 reset 到远程分支后重试"
-        timeout "${GIT_QUICK_TIMEOUT}" git reset --hard "origin/${target}" || log WARN "git reset 失败"
-        _pull_current_branch || log WARN "reset 后 pull 仍然失败，继续构建（可能存在本地修改）"
+        if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+          log FATAL "git pull 失败且工作区存在本地改动，拒绝 reset --hard 覆盖"
+          log ERROR "请先处理本地改动（git stash / git checkout -- .）后重试"
+          _log_ref_diagnostics "${target}"
+          return 1
+        fi
+        log WARN "工作区干净，reset 到 origin/${target} 后重试"
+        if ! timeout "${GIT_QUICK_TIMEOUT}" git reset --hard "origin/${target}"; then
+          log FATAL "git reset --hard origin/${target} 失败"
+          _log_ref_diagnostics "${target}"
+          return 1
+        fi
+        if ! _pull_current_branch; then
+          log FATAL "reset 后 git pull 仍然失败"
+          _log_ref_diagnostics "${target}"
+          return 1
+        fi
       fi
     else
       # 在标签上：工作区可能被污染，先尝试 restore，失败再 clean
@@ -436,15 +454,21 @@ main() {
     log INFO "克隆 ${firmware} ${target}"
     log DEBUG "仓库地址: https://github.com/${firmware}/${firmware}.git"
 
-    if ! timeout 600 git clone --depth=1 --branch "${target}" \
-      "https://github.com/${firmware}/${firmware}.git" "${source_dir}" 2>&1; then
+    local clone_log
+    clone_log="$(mktemp)"
+    if ! run_capture "${clone_log}" timeout 600 git clone --depth=1 --branch "${target}" \
+      "https://github.com/${firmware}/${firmware}.git" "${source_dir}"; then
       # 克隆失败，记录详细错误信息
       log FATAL "克隆失败"
       log ERROR "仓库: https://github.com/${firmware}/${firmware}.git"
       log ERROR "分支/标签: ${target}"
       log ERROR "目标目录: ${source_dir}"
+      log ERROR "失败输出尾部:"
+      print_tail "${clone_log}"
+      rm -f "${clone_log}"
       exit 1
     fi
+    rm -f "${clone_log}"
 
     log INFO "克隆完成"
   fi

@@ -176,6 +176,21 @@ main() {
   # 验证源码目录存在（必须已通过 source-management.sh 创建）
   require_dir "sources/${firmware}" "源码目录不存在"
 
+  # 提前校验 profile 目录：profile 必须与 public/assets/<profile> 目录名逐字符一致
+  # （连字符误写成下划线时，原本只会在后面报“配置文件不存在”，难以定位）
+  local profile_dir="${src_dir}/assets/${profile}"
+  if [[ ! -d "${profile_dir}" ]]; then
+    local available="" d
+    for d in "${src_dir}/assets"/*/; do
+      [[ -d "${d}" ]] || continue
+      available+="$(basename "${d}") "
+    done
+    log FATAL "profile 目录不存在: ${profile_dir}"
+    log ERROR "profile 必须与目录名完全一致（注意连字符 - 与下划线 _ 的区别）"
+    log ERROR "可用 profile: ${available:-（无）}"
+    return 1
+  fi
+
   #######################################
   # 复制主配置文件
   #######################################
@@ -242,24 +257,35 @@ main() {
 
   # 同步通用文件
   if [[ -d "${src_dir}/assets/common/files" ]]; then
-    if ! rsync -a --exclude='index.html' "${src_dir}/assets/common/files/" "${dst_dir}/files" 2>&1; then
+    local rsync_log
+    rsync_log="$(mktemp)"
+    if ! run_capture "${rsync_log}" rsync -a --exclude='index.html' "${src_dir}/assets/common/files/" "${dst_dir}/files"; then
       log FATAL "同步 common 文件失败"
       log ERROR "源: ${src_dir}/assets/common/files/"
       log ERROR "目标: ${dst_dir}/files"
+      log ERROR "失败输出尾部:"
+      print_tail "${rsync_log}"
+      rm -f "${rsync_log}"
       exit 1
     fi
+    rm -f "${rsync_log}"
   else
     log INFO "未找到 common/files 目录，跳过通用额外文件同步"
   fi
 
   # 同步设备特定文件
   if [[ -d "${src_dir}/assets/${profile}/files" ]]; then
-    if ! rsync -a --exclude='index.html' "${src_dir}/assets/${profile}/files/" "${dst_dir}/files" 2>&1; then
+    rsync_log="$(mktemp)"
+    if ! run_capture "${rsync_log}" rsync -a --exclude='index.html' "${src_dir}/assets/${profile}/files/" "${dst_dir}/files"; then
       log FATAL "同步 ${profile} 文件失败"
       log ERROR "源: ${src_dir}/assets/${profile}/files/"
       log ERROR "目标: ${dst_dir}/files"
+      log ERROR "失败输出尾部:"
+      print_tail "${rsync_log}"
+      rm -f "${rsync_log}"
       exit 1
     fi
+    rm -f "${rsync_log}"
   else
     log INFO "未找到 ${profile}/files 目录，跳过设备特定额外文件同步"
   fi

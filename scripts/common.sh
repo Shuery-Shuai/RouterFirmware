@@ -92,8 +92,40 @@ fi
 #   LOG_FILE_PATH  - 日志文件的存储路径
 #######################################
 : "${LOG_LEVEL:=INFO}"
-: "${LOG_TO_FILE:=false}"
-: "${LOG_FILE_PATH:=/tmp/openwrt_build_$(date +%Y%m%d_%H%M%S).log}"
+
+# 文件日志策略：
+#   - 未显式指定时：本地默认开启，CI 默认关闭（GitHub 已提供日志，且 runner 磁盘仅 14GB）
+#   - LOG_FILE_PATH 必须由入口脚本解析一次并 export，否则每个子脚本会各自生成一个带新
+#     时间戳的路径，同一轮构建的日志会碎成多份
+_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -z "${LOG_TO_FILE:-}" ]]; then
+  if [[ -n "${CI:-}" ]]; then
+    LOG_TO_FILE="false"
+  else
+    LOG_TO_FILE="true"
+  fi
+fi
+export LOG_TO_FILE
+
+: "${LOG_FILE_PATH:=${_COMMON_DIR}/../logs/build-$(date +%Y%m%d_%H%M%S).log}"
+export LOG_FILE_PATH
+
+if [[ "${LOG_TO_FILE}" == "true" ]]; then
+  mkdir -p "$(dirname "${LOG_FILE_PATH}")" 2>/dev/null || true
+fi
+
+# 构建原始输出留存策略：
+#   - 未显式指定时：本地默认开启（失败后可复盘 make 的原始输出），CI 默认关闭（runner 磁盘仅 14GB）
+#   - 关闭时无任何磁盘占用；开启时由 build.sh 把 make 输出追加写入带时间戳的文件
+if [[ -z "${CAPTURE_BUILD_LOG:-}" ]]; then
+  if [[ -n "${CI:-}" ]]; then
+    CAPTURE_BUILD_LOG="false"
+  else
+    CAPTURE_BUILD_LOG="true"
+  fi
+fi
+export CAPTURE_BUILD_LOG
 
 #######################################
 # 获取日志级别的显示样式（内部函数）
@@ -142,12 +174,179 @@ _normalize_log_level() {
   case "$1" in
   TRACE) echo 0 ;;
   DEBUG) echo 1 ;;
-  INFO) echo 2 ;;
+  INFO | SUCCESS) echo 2 ;;
   WARN) echo 3 ;;
   ERROR) echo 4 ;;
   FATAL) echo 5 ;;
   *) echo -1 ;;
   esac
+}
+
+# LOG_LEVEL 合法性校验：未知级别会让级别过滤整体失效（所有日志放行或全部丢弃），必须显式纠正
+if [[ "$(_normalize_log_level "${LOG_LEVEL}")" == "-1" ]]; then
+  printf '[%s] [🚨 WARN] [common] 未知 LOG_LEVEL=%s，已回退为 INFO（可选值: TRACE|DEBUG|INFO|WARN|ERROR|FATAL）\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "${LOG_LEVEL}" >&2
+  LOG_LEVEL="INFO"
+fi
+
+#######################################
+# 执行命令：输出实时透传，同时留存完整输出供失败诊断
+#
+# 用法: run_capture [--append] <留存文件> <命令...>
+#
+# Returns:
+#   命令自身的退出码（而非 tee 的退出码）
+#######################################
+run_capture() {
+  local mode="w"
+  if [[ "${1:-}" == "--append" ]]; then
+    mode="a"
+    shift
+  fi
+  local capture_file="$1"
+  local rc=0
+  shift
+  if [[ "${mode}" == "a" ]]; then
+    "$@" 2>&1 | tee -a "${capture_file}" || rc="${PIPESTATUS[0]}"
+  else
+    "$@" 2>&1 | tee "${capture_file}" || rc="${PIPESTATUS[0]}"
+  fi
+  return "${rc}"
+}
+
+#######################################
+# 打印留存的命令输出尾部（FATAL 前的失败现场）
+#
+# 用法: print_tail <留存文件> [行数，默认 40]
+#######################################
+print_tail() {
+  local capture_file="$1"
+  local lines="${2:-40}"
+  [[ -s "${capture_file}" ]] || return 0
+  tail -n "${lines}" "${capture_file}" 2>/dev/null | sed 's/^/    /' >&2 || true
+}
+
+#######################################
+# 执行 git 命令，在"元数据抖动"时自动重试
+#
+# 在 Docker Desktop 的 virtiofs/osxfs 共享挂载上，git 会因瞬时元数据异常误报
+# "detected dubious ownership" 或 "Operation not permitted"；同一命令立即重跑即可
+# 成功（实测重现与恢复）。这里只对这两类抖动重试，其他错误原样返回。
+#
+# 用法: git_retry <git 参数...>   （在目标仓库 cwd 或配合 -C 使用）
+#
+# Returns:
+#   最后成功/失败的退出码
+#######################################
+git_retry() {
+  local attempts=3
+  local attempt=1
+  local output=""
+
+  while [[ "${attempt}" -le "${attempts}" ]]; do
+    if output="$(git "$@" 2>&1)"; then
+      [[ -n "${output}" ]] && printf '%s\n' "${output}"
+      return 0
+    fi
+    if [[ "${attempt}" -lt "${attempts}" ]] &&
+      [[ "${output}" == *"dubious ownership"* || "${output}" == *"Operation not permitted"* ]]; then
+      log WARN "git 元数据抖动（第 ${attempt}/${attempts} 次重试）: git $*"
+      sleep 1
+      attempt=$((attempt + 1))
+      continue
+    fi
+    printf '%s\n' "${output}" >&2
+    return 1
+  done
+  return 1
+}
+
+#######################################
+# 收割本次构建新增的 OpenWrt 失败日志
+#
+# OpenWrt 只在失败时把现场写进源码树的 logs/ 目录（如
+# logs/package/feeds/packages/<pkg>/dump.txt）；本函数只挑出本次构建新增的部分
+# 并打印尾部，避免 FATAL 旁边只有硬编码路径。镜像/签名等阶段的失败不会留下
+# 这类日志，此时给出明确提示。
+#
+# 用法: harvest_build_logs <起始时间戳(epoch)> <源码目录>
+#######################################
+harvest_build_logs() {
+  local started_at="$1"
+  local source_dir="$2"
+  local log_root="${source_dir}/logs"
+
+  if [[ ! -d "${log_root}" ]]; then
+    log WARN "OpenWrt 未产生失败日志目录（${log_root} 不存在，失败可能发生在镜像/签名等阶段）"
+    return 0
+  fi
+
+  # 只收割本次构建新增的文件；find 不支持 -newermt（精简镜像）时退回全量列出并明确告知
+  local find_expr=(-type f)
+  if find "${log_root}" -maxdepth 0 -newermt "@${started_at}" >/dev/null 2>&1; then
+    find_expr+=(-newermt "@${started_at}")
+  else
+    log WARN "当前 find 不支持 -newermt，改为列出 logs/ 下全部文件（可能包含历史失败）"
+  fi
+
+  local found=0
+  local harvested
+  while IFS= read -r harvested; do
+    [[ -z "${harvested}" ]] && continue
+    found=$((found + 1))
+    log ERROR "OpenWrt 失败现场: ${harvested}"
+    print_tail "${harvested}" 40
+  done < <(find "${log_root}" "${find_expr[@]}" 2>/dev/null | sort | head -10)
+
+  if [[ "${found}" -eq 0 ]]; then
+    log WARN "OpenWrt 日志目录存在，但本次构建未新增失败日志"
+  fi
+  return 0
+}
+
+#######################################
+# 交互式是/否询问（三态：非交互 / 回车 / 超时）
+#
+# 取值规则：
+#   - 非 TTY 或 NON_INTERACTIVE=true：不询问，取 non_tty_default
+#   - TTY + 回车（空回答）          ：取 prompt_default（即提示语里大写的那个）
+#   - TTY + 超时（timeout 秒无输入）：取 prompt_default
+#   - TTY + 明确回答                ：解析 y/yes/n/no，非法值按 prompt_default 并告警
+#
+# 用法: prompt_yes_no <prompt_default: y|n> <non_tty_default: y|n> <timeout 秒> <提示语>
+# 输出: y 或 n（stdout；提示语与告警走 stderr）
+#######################################
+prompt_yes_no() {
+  local prompt_default="$1"
+  local non_tty_default="$2"
+  local timeout_seconds="$3"
+  local prompt_text="$4"
+  local answer=""
+
+  if [[ ! -t 0 || "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    log INFO "非交互环境：按 ${non_tty_default} 处理（${prompt_text% }）"
+    printf '%s\n' "${non_tty_default}"
+    return 0
+  fi
+
+  local read_args=(-r -p "${prompt_text}")
+  [[ "${timeout_seconds}" != "0" ]] && read_args+=(-t "${timeout_seconds}")
+
+  # shellcheck disable=SC2162  # -r 已包含在 read_args 中，shellcheck 无法跨数组追踪
+  if read "${read_args[@]}" answer; then
+    case "${answer,,}" in
+    "") printf '%s\n' "${prompt_default}" ;;
+    y | yes) printf 'y\n' ;;
+    n | no) printf 'n\n' ;;
+    *)
+      log WARN "无法识别的输入 '${answer}'，按默认 ${prompt_default} 处理"
+      printf '%s\n' "${prompt_default}"
+      ;;
+    esac
+  else
+    log WARN "未收到输入（${timeout_seconds} 秒超时或输入结束），按默认 ${prompt_default} 处理"
+    printf '%s\n' "${prompt_default}"
+  fi
 }
 
 #######################################
@@ -575,6 +774,9 @@ EOF
 #   Shell Check 无法跨函数边界追踪此用法，故在函数内禁用 SC2034。
 #######################################
 # shellcheck disable=SC2034  # PARSED_ARGS 由调用者声明和使用
+# 无值布尔选项：写 `--flag` 等价于 `--flag=true`，且永不吞掉后面的位置参数
+BOOLEAN_OPTIONS=(h help ask-menuconfig non-interactive no-retry-serial allow-diy-failure no-log-file capture-build-log no-capture-build-log)
+
 parse_args() {
   local positional_index=0
 
@@ -592,7 +794,20 @@ parse_args() {
     --*)
       # 格式: --key value 或 --flag
       local key="${1#--}"
-      if [[ $# -gt 1 && ! "$2" =~ ^-- ]]; then
+      local is_boolean="false"
+      local bool_option
+      for bool_option in "${BOOLEAN_OPTIONS[@]}"; do
+        if [[ "${key}" == "${bool_option}" ]]; then
+          is_boolean="true"
+          break
+        fi
+      done
+      if [[ "${is_boolean}" == "true" ]]; then
+        # 布尔选项：恒为 true，不消费下一个参数
+        PARSED_ARGS["${key}"]="true"
+        log DEBUG "解析参数: --${key}=true (布尔选项)"
+        shift
+      elif [[ $# -gt 1 && ! "$2" =~ ^-- ]]; then
         # 下一个参数不是选项，视为此选项的值
         PARSED_ARGS["${key}"]="$2"
         log DEBUG "解析参数: --${key}='$2'"
@@ -696,3 +911,56 @@ validate_enum() {
   log ERROR "允许的值: ${allowed_values[*]}"
   exit 1
 }
+
+#######################################
+# 共享挂载适配（内部函数）
+#
+# Docker Desktop 在 macOS 上通过 virtiofs/osxfs 暴露宿主目录，元数据操作会偶发
+# 失败，导致 git 误报 "detected dubious ownership in repository"（实测：同一条命令
+# 立即重跑即成功）。项目内所有仓库都归同一构建用户所有，因此在该类挂载上显式关闭
+# 该检查；CI 的 ext4 上不做任何改动。
+#
+# Arguments:
+#   $1 - 用于判定挂载类型的路径
+#   $2 - 可选: quiet（命中时不打印日志，由调用方决定如何提示）
+#
+# Returns:
+#   0 - 命中共享挂载（并已设置 git 环境变量）
+#   1 - 普通文件系统
+#######################################
+_detect_shared_mount() {
+  local target="$1"
+  local quiet="${2:-}"
+  local mount_point fstype
+  local best=""
+  local best_type=""
+
+  while read -r _ mount_point fstype _; do
+    case "${target}" in
+    "${mount_point}" | "${mount_point%/}"/*)
+      if [[ ${#mount_point} -gt ${#best} ]]; then
+        best="${mount_point}"
+        best_type="${fstype}"
+      fi
+      ;;
+    esac
+  done < <(awk '{print $1, $2, $3}' /proc/mounts 2>/dev/null)
+
+  case "${best_type}" in
+  virtiofs | osxfs | fuse.osxfs | 9p)
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=safe.directory
+    export GIT_CONFIG_VALUE_0='*'
+    export SHARED_MOUNT=true
+    if [[ "${quiet}" != "quiet" ]]; then
+      log INFO "检测到共享挂载（${best_type}）：已关闭 git dubious-ownership 检查，并提高构建重试次数默认值"
+    fi
+    return 0
+    ;;
+  *) return 1 ;;
+  esac
+}
+
+if [[ -z "${GIT_CONFIG_COUNT:-}" ]]; then
+  _detect_shared_mount "${_COMMON_DIR}" || true
+fi

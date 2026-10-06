@@ -1,7 +1,16 @@
 .DS_Store
 sources/*
+logs/
 public/immortalwrt
 public/openwrt
-public/assets/web/data/index.json
 public.zip
 keys/private-key.pem
+
+# 构建期生成的目录列表页与落地页（CI 在部署前生成，不入库）
+public/**/index.html
+
+# 浏览器调试截图（本地核验用，不入库）
+browser-screenshots/
+
+# 站点字体的源文件（91 MB，仅用于再生成子集；不入库，见 config/fonts.sha256）
+fonts-src/

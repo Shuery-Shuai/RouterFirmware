@@ -83,6 +83,7 @@ main() {
       "  -h, --help              显示此帮助信息" \
       "  --source-dir=PATH       源码目录路径 (默认: .)" \
       "  --firmware=TYPE         固件类型 (openwrt|immortalwrt, 默认: immortalwrt)" \
+      "  --allow-diy-failure     允许 diy-part1/2.sh 失败后继续 (默认: 失败即终止)" \
       "" \
       "位置参数:" \
       "  source_dir              源码目录路径 (等同于 --source-dir)" \
@@ -93,6 +94,8 @@ main() {
   # 获取参数（优先使用命名参数，其次使用位置参数，最后使用默认值）
   local source_dir="${PARSED_ARGS['source-dir']:-${PARSED_ARGS[_POSITIONAL_0]:-.}}"
   local firmware="${PARSED_ARGS['firmware']:-${PARSED_ARGS[_POSITIONAL_1]:-immortalwrt}}"
+  # DIY 脚本失败语义：默认失败即终止（--allow-diy-failure 可降级为告警）
+  local allow_diy_failure="${PARSED_ARGS['allow-diy-failure']:-${ALLOW_DIY_FAILURE:-false}}"
 
   # 验证源码目录结构
   require_file "${source_dir}/Makefile" "Makefile 不存在于 ${source_dir}"
@@ -106,13 +109,21 @@ main() {
 
   # 在更新前暴力重置所有 feeds 子仓库
   if [ -d feeds ]; then
-    find feeds -maxdepth 2 -name .git -type d | while read -r gitdir; do
-      repo_dir=$(dirname "$gitdir")
-      log 'INFO' "重置 ${repo_dir} ……"
-      git -C "$repo_dir" fetch origin
-      git -C "$repo_dir" reset --hard origin/master
-      git -C "$repo_dir" clean -fdx
-    done
+    local feed_repo_dir
+    while IFS= read -r gitdir; do
+      feed_repo_dir="$(dirname "$gitdir")"
+      log INFO "重置 ${feed_repo_dir} ……"
+      # 显式判错 + 元数据抖动重试：此前依赖管道子 shell 里的 set -e，
+      # 失败时整脚本猝死且无 repo 名；virtiofs 上还会偶发 dubious ownership
+      if ! git_retry -C "$feed_repo_dir" fetch origin ||
+        ! git_retry -C "$feed_repo_dir" reset --hard origin/master ||
+        ! git_retry -C "$feed_repo_dir" clean -fdx; then
+        log FATAL "feeds 重置失败: ${feed_repo_dir}（fetch / reset / clean 之一失败）"
+        log ERROR "可手动检查该仓库状态后重试，或删除 feeds/ 后重新拉取"
+        log ERROR "若为 'dubious ownership'：git config --global --add safe.directory ${feed_repo_dir}"
+        exit 1
+      fi
+    done < <(find feeds -maxdepth 2 -name .git -type d)
   fi
 
   # 清除可能由之前构建残留的自定义符号链接（这些链接不是 Git 管理的）
@@ -122,8 +133,15 @@ main() {
   # 执行第一阶段 DIY 脚本（通常用于修改 feeds.conf.default）
   if [[ -f "diy-part1.sh" ]]; then
     log INFO "执行 diy-part1.sh"
-    # 允许脚本返回非零退出码（可能只是警告）
-    bash diy-part1.sh || log WARN "diy-part1.sh 有警告"
+    if ! bash diy-part1.sh; then
+      if [[ "${allow_diy_failure}" == "true" ]]; then
+        log WARN "diy-part1.sh 失败，但 --allow-diy-failure 已开启，继续构建"
+      else
+        log FATAL "diy-part1.sh 失败：定制内容未生效，构建终止"
+        log ERROR "如确认该失败可忽略，请加 --allow-diy-failure 重试"
+        exit 1
+      fi
+    fi
   else
     log DEBUG "diy-part1.sh 不存在，跳过"
   fi
@@ -132,12 +150,18 @@ main() {
   # -a: 更新所有 feeds
   # -f: 强制更新，即使已是最新版本
   log INFO "更新 feeds"
-  if ! ./scripts/feeds update -a -f 2>&1; then
+  local feeds_log
+  feeds_log="$(mktemp)"
+  if ! run_capture "${feeds_log}" ./scripts/feeds update -a -f; then
     log FATAL "feeds 更新失败"
     log ERROR "工作目录: $(pwd)"
     log ERROR "feeds 脚本: ./scripts/feeds"
+    log ERROR "失败输出尾部:"
+    print_tail "${feeds_log}"
+    rm -f "${feeds_log}"
     exit 1
   fi
+  rm -f "${feeds_log}"
 
   # 执行第二阶段 DIY 脚本（通常用于修改软件包源码或配置）
   # 注意：必须在 feeds install 之前执行，以便：
@@ -145,8 +169,15 @@ main() {
   #   2. 修改已安装的 feeds 内容（如 Makefile、源码补丁等）
   if [[ -f "diy-part2.sh" ]]; then
     log INFO "执行 diy-part2.sh"
-    # 允许脚本返回非零退出码（可能只是警告）
-    bash diy-part2.sh || log WARN "diy-part2.sh 有警告"
+    if ! bash diy-part2.sh; then
+      if [[ "${allow_diy_failure}" == "true" ]]; then
+        log WARN "diy-part2.sh 失败，但 --allow-diy-failure 已开启，继续构建"
+      else
+        log FATAL "diy-part2.sh 失败：定制内容未生效，构建终止"
+        log ERROR "如确认该失败可忽略，请加 --allow-diy-failure 重试"
+        exit 1
+      fi
+    fi
   else
     log DEBUG "diy-part2.sh 不存在，跳过"
   fi
@@ -158,12 +189,18 @@ main() {
   # -a: 安装所有 feeds
   # -f: 强制安装，覆盖已有版本
   log INFO "安装 feeds"
-  if ! ./scripts/feeds install -a -f 2>&1; then
+  local install_log
+  install_log="$(mktemp)"
+  if ! run_capture "${install_log}" ./scripts/feeds install -a -f; then
     log FATAL "feeds 安装失败"
     log ERROR "工作目录: $(pwd)"
     log ERROR "feeds 脚本: ./scripts/feeds"
+    log ERROR "失败输出尾部:"
+    print_tail "${install_log}"
+    rm -f "${install_log}"
     exit 1
   fi
+  rm -f "${install_log}"
 
   log INFO "Feeds 管理完成"
 }
