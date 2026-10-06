@@ -104,9 +104,14 @@ main() {
     require_dir "public" "public 目录不存在，请在仓库根目录执行此脚本"
 
     # 压缩并处理错误
+    # 注意：必须打包 public 的“内容”，而不是 public 目录本身。
+    # 若 zip 内自带顶层 public/，部署流程解包到 public/ 后会得到
+    # public/public/** 的嵌套副本（线上站点曾因此凭空膨胀一倍以上）。
     log INFO "正在压缩 public -> ${output_file} ..."
-    if zip -rq "${output_file}" "public"; then
-        log SUCCESS "压缩完成: $(realpath "${output_file}")"
+    local output_abs
+    output_abs="$(cd "$(dirname "${output_file}")" && pwd)/$(basename "${output_file}")"
+    if (cd public && zip -rq "${output_abs}" .); then
+        log SUCCESS "压缩完成: ${output_abs}"
         echo ""
         log INFO "=== 下一步操作 ==="
         log INFO "1. 将 ${output_file} 上传到可公开访问的服务器"

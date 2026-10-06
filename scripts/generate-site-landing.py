@@ -25,13 +25,12 @@ import json
 import sys
 from pathlib import Path
 
-from site_i18n import LANG_TOGGLE, SITE_JS, line, title_tag
+from site_i18n import LANG_TOGGLE, SITE_JS_PATH, asset_url, icon_tags, line, title_tag
 
 # 官方样式表：跨域引用官方那份（不复制文件，避免再分发）
 OFFICIAL_CSS = "https://downloads.immortalwrt.org/openwrt.css"
 
-# 内嵌的极简语言切换脚本（无 JS 时页面显示中文默认文案）
-def page_shell(title: str, title_en: str, body: str) -> str:
+def page_shell(public_dir: Path, title: str, title_en: str, body: str) -> str:
     return "\n".join([
         "<!DOCTYPE html>",
         "<html lang='zh-CN'>",
@@ -39,19 +38,20 @@ def page_shell(title: str, title_en: str, body: str) -> str:
         "<meta charset='utf-8'/>",
         "<meta name='viewport' content='width=device-width, initial-scale=1.0'/>",
         f"<link rel='stylesheet' href='{OFFICIAL_CSS}' />",
-        "<link rel='stylesheet' href='/assets/site/base.css' />",
+        f"<link rel='stylesheet' href='{asset_url(public_dir, 'assets/site/base.css')}' />",
+        icon_tags(public_dir),
         title_tag(title, title_en),
         "</head>",
         "",
         "<body>",
-        LANG_TOGGLE,
         '<div class="container">',
+        LANG_TOGGLE,
         body,
         "<footer>",
         line("本页由构建流程自动生成，内容来自 config/site.json。", "This page is generated at build time from config/site.json."),
         "</footer>",
         "</div>",
-        f"<script src='{SITE_JS}' defer></script>",
+        f"<script src='{asset_url(public_dir, SITE_JS_PATH)}' defer></script>",
         "</body>",
         "</html>",
         "",
@@ -120,11 +120,11 @@ def render_index(config: dict, public_dir: Path) -> str:
     )
     body.append("\n<hr/>\n".join(blocks))
     body.append("</div>")
-    return page_shell(config.get("title", "固件下载"),
+    return page_shell(public_dir, config.get("title", "固件下载"),
                       config.get("title_en") or "Firmware Downloads", "\n".join(body))
 
 
-def render_firmware_index(config: dict, fw: dict) -> str:
+def render_firmware_index(config: dict, fw: dict, public_dir: Path) -> str:
     body = [
         "<h1>" + html.escape(fw.get("title", fw["id"])) + "</h1>",
         '<p><small><a href="/">' + line("← 返回站点首页", "← Back to site home", "span") + "</a></small></p>",
@@ -132,7 +132,7 @@ def render_firmware_index(config: dict, fw: dict) -> str:
         firmware_sections(fw),
         "</div>",
     ]
-    return page_shell(fw.get("title", fw["id"]),
+    return page_shell(public_dir, fw.get("title", fw["id"]),
                       fw.get("title_en") or fw.get("title", fw["id"]), "\n".join(body))
 
 
@@ -192,7 +192,7 @@ def main() -> int:
         fw_dir = public_dir / fw["id"]
         if not fw_dir.is_dir():
             continue
-        (fw_dir / "index.html").write_text(render_firmware_index(config, fw), encoding="utf-8")
+        (fw_dir / "index.html").write_text(render_firmware_index(config, fw, public_dir), encoding="utf-8")
         if not args.quiet:
             print(f"  已生成 {fw_dir}/index.html")
 

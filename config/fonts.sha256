@@ -1,0 +1,15 @@
+# 站点字体的上游源文件清单（用于校验本地副本；文件本身不入库）
+# 生成方式: shasum -a 256 fonts-src/sarasa/*.woff2
+# 来源说明: Sarasa Mono SC Nerd Font woff2 与 Smiley Sans woff2（自行转换产物，
+#          上游 Sarasa Gothic 仅提供 TTF/TTC 归档，故此处以哈希锁定身份）
+acf863ee7015fb9244383dbf596e308a70adb33d19c37a6bf9568349578a0694  sarasa-mono-sc-bold-nerd-font.woff2
+3a8407da6716688c0d5c5327853322ff0022c693833b1f7912db60cf9aacc3a2  sarasa-mono-sc-bolditalic-nerd-font.woff2
+a860ffd91c7bc599552ae5074d725219b92cc2886730a7e872ff2e82441f1d4a  sarasa-mono-sc-extralight-nerd-font.woff2
+eea71805aebf858b3629ac02912803e38a7c54018fab5a6f86673262921c452f  sarasa-mono-sc-extralightitalic-nerd-font.woff2
+77733a7eb1b1f74db4c26adf6dd26425810b6cc64ee0b25f2d8b18dd15464f8d  sarasa-mono-sc-italic-nerd-font.woff2
+715d4de082f4b6e6585fb14a6d20d1536d3b79eaaa45f702f59e95284bd17dce  sarasa-mono-sc-light-nerd-font.woff2
+d0ccc3de49645a43acb0f342d4670a2b843159e38913fab2cafa5cbcbb6b1945  sarasa-mono-sc-lightitalic-nerd-font.woff2
+f3eb32b9f68bc641c092daa03c4c4d319d83f893d9f0ff97e7f11489d83339db  sarasa-mono-sc-regular-nerd-font.woff2
+e8172e2e018d32f2d5a2b0ccf6e7a6503d16baffd67d9ee36af9401060a9afaf  sarasa-mono-sc-semibold-nerd-font.woff2
+223c687e94c9808e76520ee69ff69a4dd9beda3a0c26c1762b75454cb63d9fc6  sarasa-mono-sc-semibolditalic-nerd-font.woff2
+731f22973349404b15a88a99ef3b5dd4104c0965c23b7e485c1f11e84fea99e2  SmileySans-Oblique.ttf.woff2

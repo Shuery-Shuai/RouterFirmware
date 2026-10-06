@@ -118,7 +118,10 @@ _check_no_nested_public() {
 #######################################
 _check_top_level() {
   shopt -s nullglob
-  local allowed=("assets" "index.html" "404.html" "CNAME" ".nojekyll" "${FIRMWARES[@]}")
+  # favicon.ico / favicon.svg / apple-touch-icon.png 由 scripts/build-site-icon.py 生成并随仓库提交：
+  # 浏览器对 /favicon.ico 是"无 link 也请求"，所以三个文件必须待在站点根，不能挪进 assets/。
+  local allowed=("assets" "index.html" "404.html" "CNAME" ".nojekyll"
+                 "favicon.ico" "favicon.svg" "apple-touch-icon.png" "${FIRMWARES[@]}")
   local entry name
   for entry in "${PUBLIC_DIR}"/* "${PUBLIC_DIR}"/.[!.]*; do
     name="$(basename "${entry}")"
