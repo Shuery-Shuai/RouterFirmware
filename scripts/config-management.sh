@@ -97,6 +97,8 @@ main() {
       "  --version=VER           版本号 (snapshots|版本号, 默认: snapshots)" \
       "  --profile=PROF          设备 profile (默认: bananapi_bpi-r4)" \
       "  --ask-menuconfig=BOOL   是否询问运行 menuconfig (true|false, 默认: false)" \
+      "  --prompt-timeout=SEC    交互提示超时秒数 (0=永不超时, 默认: 60)" \
+      "  --non-interactive       强制非交互：提示一律取默认值" \
       "" \
       "位置参数:" \
       "  source_dir              源码目录路径 (等同于 --source-dir)" \
@@ -113,9 +115,21 @@ main() {
   local version="${PARSED_ARGS['version']:-${PARSED_ARGS[_POSITIONAL_2]:-snapshots}}"
   local profile="${PARSED_ARGS['profile']:-${PARSED_ARGS[_POSITIONAL_3]:-bananapi_bpi-r4}}"
   local ask_menuconfig="${PARSED_ARGS['ask-menuconfig']:-${PARSED_ARGS[_POSITIONAL_4]:-false}}"
+  local prompt_timeout="${PARSED_ARGS['prompt-timeout']:-${PROMPT_TIMEOUT:-60}}"
   local board
   local subtarget
   local arch
+
+  # 非交互标志：本脚本直接运行或由 make.sh 通过环境变量继承
+  if [[ "${PARSED_ARGS['non-interactive']:-}" == "true" ]]; then
+    NON_INTERACTIVE="true"
+    export NON_INTERACTIVE
+  fi
+
+  if [[ ! "${prompt_timeout}" =~ ^[0-9]+$ ]]; then
+    log ERROR "--prompt-timeout 必须是非负整数（秒），当前值: '${prompt_timeout}'"
+    exit 1
+  fi
 
   # 验证源码目录结构
   require_file "${source_dir}/Makefile" "Makefile 不存在于 ${source_dir}"
@@ -128,11 +142,11 @@ main() {
 
   # 重新扫描软件包索引
   # diy-part2.sh 可能通过符号链接添加了新包，需要先扫描包目录
-  # 使用 make tmp/.packageinfo 来触发包索引重建，但不改动 .config
+  # 注意：必须同时删除扫描戳记，否则 feeds install 刚生成的戳记会让 make 认为
+  # "扫描已是最新"而跳过重建，导致 prepare-tmpinfo 因缺少 tmp/.packageinfo 失败
   log INFO "重新扫描软件包索引"
-  if ! rm -f tmp/.packageinfo 2>&1; then
+  rm -f tmp/.packageinfo tmp/.config-package.in tmp/info/.scan-packageinfo.stamp ||
     log WARN "清理 packageinfo 缓存失败，但继续"
-  fi
 
   # 生成默认配置文件
   # defconfig 会根据 .config 中的 CONFIG_TARGET_* 生成完整配置
@@ -163,12 +177,21 @@ main() {
     #   2. 架构基础软件包
     #   3. LuCI Web 界面软件包
     #   4. 通用软件包
+    #
+    # 注意站点上的版本目录名：快照版是 snapshots/，发行版是 releases/<版本>/
+    # （与 copy-bin-files.sh 的落盘路径一致；此前发行版会写成 /<版本>/ 导致 404）
+    local version_path
+    if [[ "${version}" == "snapshots" ]]; then
+      version_path="snapshots"
+    else
+      version_path="releases/${version}"
+    fi
     cat >files/etc/apk/repositories.d/customfeeds.list <<EOF
 # Custom package feeds - Auto-generated
-https://rtfw.shuery.lssa.fun/${firmware}/${version}/targets/${board}/${subtarget}/packages/packages.adb
-https://rtfw.shuery.lssa.fun/${firmware}/${version}/packages/${arch}/base/packages.adb
-https://rtfw.shuery.lssa.fun/${firmware}/${version}/packages/${arch}/luci/packages.adb
-https://rtfw.shuery.lssa.fun/${firmware}/${version}/packages/${arch}/packages/packages.adb
+https://rtfw.shuery.lssa.fun/${firmware}/${version_path}/targets/${board}/${subtarget}/packages/packages.adb
+https://rtfw.shuery.lssa.fun/${firmware}/${version_path}/packages/${arch}/base/packages.adb
+https://rtfw.shuery.lssa.fun/${firmware}/${version_path}/packages/${arch}/luci/packages.adb
+https://rtfw.shuery.lssa.fun/${firmware}/${version_path}/packages/${arch}/packages/packages.adb
 EOF
     log INFO "已生成 customfeeds.list"
   else
@@ -245,10 +268,11 @@ EOF
       }
     ' diff.config .config >.config.new && mv .config.new .config
 
-    # 非交互更新配置，忽略 oldconfig 的返回码（它有时会非0）
+    # 非交互更新配置：stdin 指向 /dev/null，oldconfig 对所有新符号取默认值
+    # （此前用 `yes '' |` 配合 pipefail，会把 yes 的 SIGPIPE 141 误当成失败）
     log INFO "同步配置 (oldconfig)..."
-    yes '' 2>/dev/null | make oldconfig >/dev/null 2>&1 || {
-      log WARN "make oldconfig exited with code $? (this may be harmless)"
+    make oldconfig </dev/null >/dev/null 2>&1 || {
+      log WARN "make oldconfig 退出码 $?（配置可能未完全同步）"
     }
 
     log INFO "差异配置应用完成，已同步至当前源码"
@@ -256,19 +280,31 @@ EOF
     log DEBUG "diff.config 不存在，跳过差异应用"
   fi
 
+  # 编译缓存：由脚本统一开启 ccache，不要求用户写进 config（便于仓库移植；
+  # CI 与本地走同一套脚本，因此两条路径同时生效）。
+  # 环境需有 ccache 命令（构建镜像已内置）；缺失时仅告警，不影响构建。
+  if command -v ccache >/dev/null 2>&1; then
+    if grep -q '^CONFIG_CCACHE=y$' .config; then
+      log DEBUG "ccache 已在配置中启用"
+    else
+      sed -i '/^CONFIG_CCACHE=/d' .config
+      printf 'CONFIG_CCACHE=y\n' >>.config
+      log INFO "已启用编译缓存 ccache（CONFIG_CCACHE=y，由脚本统一开启）"
+      make oldconfig </dev/null >/dev/null 2>&1 || log WARN "oldconfig 返回非零，ccache 配置可能未生效"
+    fi
+  else
+    log WARN "未检测到 ccache 命令，跳过编译缓存启用（安装 ccache 后自动生效）"
+  fi
+
   # 可选的交互式配置
-  # 允许用户通过 menuconfig 手动调整配置，15 秒超时自动跳过
+  # TTY 下回车/超时都取提示语默认值（Y）；非 TTY 一律不运行
   if [[ "${ask_menuconfig}" == "true" ]]; then
-    read -t 60 -rp "运行 make menuconfig? [Y/n] " answer || answer="n"
-    case "${answer,,}" in
-    y | yes | "")
-      # 运行 menuconfig
+    if [[ "$(prompt_yes_no y n "${prompt_timeout}" "运行 make menuconfig? [Y/n] ")" == "y" ]]; then
       make menuconfig
       log INFO "menuconfig 完成"
-      ;;
-    n | no) log INFO "跳过 menuconfig" ;;
-    *) log WARN "无效输入，跳过" ;;
-    esac
+    else
+      log INFO "跳过 menuconfig"
+    fi
   fi
 
   # 基于基线生成完整差异文件（自包含的定制快照）
@@ -291,7 +327,7 @@ EOF
 
       # 检查是否有变化
       local changes_count
-      changes_count=$(grep -c '^CONFIG_' "${temp_diff}" 2>/dev/null || echo "0")
+      changes_count=$(grep -c '^CONFIG_' "${temp_diff}" 2>/dev/null || true)
 
       if [[ ${changes_count} -eq 0 ]]; then
         log INFO "配置与默认一致，无差异"
@@ -313,25 +349,23 @@ EOF
 
           echo "========================================"
 
-          # 询问是否替换
-          read -t 60 -rp "是否替换现有差异配置文件? [y/N] " replace_answer || replace_answer="y"
-          case "${replace_answer,,}" in
-          y | yes)
+          # 是否替换：TTY 下回车/超时都取提示语默认值（N，保留现有文件）；非 TTY 同样保留
+          local replace_answer
+          replace_answer="$(prompt_yes_no n n "${prompt_timeout}" "是否替换现有差异配置文件? [y/N] ")"
+          if [[ "${replace_answer}" == "y" ]]; then
             mv "${temp_diff}" "${diff_output}"
             log INFO "已替换差异配置文件: ${diff_output}"
-            ;;
-          *)
+          else
             rm -f "${temp_diff}"
             log INFO "保留现有差异配置文件"
-            ;;
-          esac
+          fi
         else
           # 文件不存在，显示新配置变化并直接保存
           log INFO "配置变化详情："
           cat "${temp_diff}"
 
           mv "${temp_diff}" "${diff_output}"
-          log INFO "已生成差异配置: ${diff_output}"
+          log INFO "已生成差异配置: ${diff_output}（新建文件，需人工确认后纳入版本控制）"
         fi
 
       fi

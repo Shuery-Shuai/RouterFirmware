@@ -57,6 +57,10 @@ on:
         description: "编译前运行 menuconfig"
         required: false
         default: "false"
+      jobs:
+        description: "编译并行度（留空=自动取 runner 核数；内存受限时可调低，例如 4）"
+        required: false
+        default: ""
       cache:
         description: "启用编译缓存"
         required: false
@@ -126,6 +130,7 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version || github.event.client_payload.version || 'snapshots' }}
           INPUT_PROFILE: ${{ github.event.inputs.profile || github.event.client_payload.profile || 'bananapi_bpi-r4' }}
           INPUT_ASK_MENUCONFIG: ${{ github.event.inputs.ask-menuconfig || github.event.client_payload.ask-menuconfig || 'false' }}
+          INPUT_JOBS: ${{ github.event.inputs.jobs || github.event.client_payload.jobs || '' }}
           INPUT_CACHE: ${{ github.event.inputs.cache || github.event.client_payload.cache || 'true' }}
           INPUT_DEBUG_SSH: ${{ github.event.inputs.debug-ssh || github.event.client_payload.debug-ssh || 'false' }}
           INPUT_UPLOAD_ARCHIVE: ${{ github.event.inputs.upload-archive || github.event.client_payload.upload-archive || 'false' }}
@@ -136,6 +141,7 @@ jobs:
           echo "version=${INPUT_VERSION}" >> $GITHUB_OUTPUT
           echo "profile=${INPUT_PROFILE}" >> $GITHUB_OUTPUT
           echo "ask-menuconfig=${INPUT_ASK_MENUCONFIG}" >> $GITHUB_OUTPUT
+          echo "jobs=${INPUT_JOBS}" >> $GITHUB_OUTPUT
           echo "use-cache=${INPUT_CACHE}" >> $GITHUB_OUTPUT
           echo "debug-ssh=${INPUT_DEBUG_SSH}" >> $GITHUB_OUTPUT
           echo "upload-archive=${INPUT_UPLOAD_ARCHIVE}" >> $GITHUB_OUTPUT
@@ -339,6 +345,24 @@ jobs:
             "${{ steps.config.outputs.version }}"
 
       # -----------------------------------------------------------------------
+      # 步骤 12 前置: 安装 ccache
+      #   GitHub runner 镜像默认不带 ccache；scripts/config-management.sh 会按环境
+      #   自动写入 CONFIG_CCACHE=y（检测不到 ccache 时仅告警并跳过），所以必须先把
+      #   命令装上，cachewrtbuild 缓存的 .ccache 才会有实际内容。
+      #   仅在启用缓存时安装：未启用缓存时单次构建用不到 ccache。
+      # -----------------------------------------------------------------------
+      - name: 安装 ccache 编译缓存
+        if: steps.config.outputs.use-cache == 'true' && steps.config.outputs.upload-archive != 'true'
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            echo "ccache 已存在: $(ccache --version | head -1)"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ccache
+            echo "已安装: $(ccache --version | head -1)"
+          fi
+
+      # -----------------------------------------------------------------------
       # 步骤 12: 启用基于 GitHub Actions Cache 的编译缓存（ccache + 工具链）
       #         仅在用户选择启用缓存时执行
       # -----------------------------------------------------------------------
@@ -385,11 +409,17 @@ jobs:
           VERSION: ${{ steps.config.outputs.version }}
           PROFILE: ${{ steps.config.outputs.profile }}
           ASK_MENUCONFIG: ${{ steps.config.outputs.ask-menuconfig }}
+          JOBS: ${{ steps.config.outputs.jobs }}
           APK_PRIVATE_KEY_B64: ${{ secrets.APK_PRIVATE_KEY_B64 }}
         run: |
           chmod +x "$GITHUB_WORKSPACE/scripts/"*.sh
           cd "$GITHUB_WORKSPACE/scripts"
-          ./make.sh "$FIRMWARE" "$VERSION" "$PROFILE" "$ASK_MENUCONFIG" || {
+          ARGS=("$FIRMWARE" "$VERSION" "$PROFILE" "$ASK_MENUCONFIG" --non-interactive)
+          if [ -n "${JOBS:-}" ]; then
+            ARGS+=("--jobs=${JOBS}")
+            echo "并行度: ${JOBS}"
+          fi
+          ./make.sh "${ARGS[@]}" || {
             echo "status=failure" >> $GITHUB_OUTPUT
             exit 1
           }
@@ -493,13 +523,24 @@ jobs:
           ls -la public/
 
       # -----------------------------------------------------------------------
-      # 步骤 4: 调用脚本生成固件文件索引页面
+      # 步骤 4: 生成目录列表页与落地页
+      # 每个发布目录生成官方风格的 index.html；站点根与各发行版根生成中文落地页
       # -----------------------------------------------------------------------
-      - name: 生成固件索引页
-        if: env.UPLOAD_ARCHIVE != 'true' || env.MERGE_HISTORY == 'true'
+      - name: 生成目录列表与落地页
         run: |
-          chmod +x "${{ github.workspace }}/scripts/generate-index.sh"
-          "${{ github.workspace }}/scripts/generate-index.sh"
+          python3 "${{ github.workspace }}/scripts/generate-site-listings.py" \
+            --public-dir=public --quiet
+          python3 "${{ github.workspace }}/scripts/generate-site-landing.py" \
+            --public-dir=public --config=config/site.json
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 校验站点目录结构
+      # 任何一条结构断言失败都会中止部署，避免发出结构损坏的站点
+      # -----------------------------------------------------------------------
+      - name: 校验站点结构
+        run: |
+          chmod +x "${{ github.workspace }}/scripts/verify-site-structure.sh"
+          "${{ github.workspace }}/scripts/verify-site-structure.sh" --require-listings
 
       # -----------------------------------------------------------------------
       # 步骤 5: 将 public/ 目录打包为 Pages Artifact
