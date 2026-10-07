@@ -742,6 +742,62 @@ print(value if isinstance(value, str) else "")
 }
 
 #######################################
+# 读取固件的上游仓库地址（config/site.json 的 firmwares[].repo）
+#
+# 「检测哪个上游、编译哪个上游」都走这一个出口：更新检测（source-update.sh）与
+# 源码克隆（source-management.sh）读的是同一份配置，不会出现"检测的分支和编译的
+# 分支不是一回事"。配置缺项（或读取工具不可用）时按 GitHub 约定地址兜底，保持
+# 历史行为不变。
+#
+# Arguments:
+#   $1 - 固件 id（如 openwrt / immortalwrt）
+#   $2 - 配置文件（可选，默认: ${SITE_CONFIG_DEFAULT}）
+#
+# Outputs:
+#   仓库地址到 stdout（永远非空）
+#
+# Examples:
+#   url="$(firmware_repo_url openwrt)"
+#######################################
+firmware_repo_url() {
+  local firmware="$1"
+  local config="${2:-${SITE_CONFIG_DEFAULT}}"
+  local url
+
+  url="$(config_firmware_value "${firmware}" repo "${config}")"
+  printf '%s\n' "${url:-https://github.com/${firmware}/${firmware}.git}"
+}
+
+#######################################
+# 读取固件的上游开发分支（config/site.json 的 firmwares[].branch）
+#
+# 快照版编译与快照版更新检测都以该分支为准：source-management.sh 用它挑
+# 克隆/切分支的引用，source-update.sh 用它查最新提交。配置缺项（或读取工具
+# 不可用）时退回历史映射（openwrt → main，其余 → master），行为与从前一致。
+#
+# Arguments:
+#   $1 - 固件 id（如 openwrt / immortalwrt）
+#   $2 - 配置文件（可选，默认: ${SITE_CONFIG_DEFAULT}）
+#
+# Outputs:
+#   分支名到 stdout（永远非空）
+#
+# Examples:
+#   branch="$(firmware_snapshot_branch openwrt)"   # 输出: main
+#######################################
+firmware_snapshot_branch() {
+  local firmware="$1"
+  local config="${2:-${SITE_CONFIG_DEFAULT}}"
+  local branch
+
+  branch="$(config_firmware_value "${firmware}" branch "${config}")"
+  if [[ -z "${branch}" ]]; then
+    [[ "${firmware}" == "openwrt" ]] && branch="main" || branch="master"
+  fi
+  printf '%s\n' "${branch}"
+}
+
+#######################################
 # 检查目录是否存在，不存在则退出脚本
 #
 # 用于在脚本开始时验证必需目录，失败时输出详细错误信息并退出。

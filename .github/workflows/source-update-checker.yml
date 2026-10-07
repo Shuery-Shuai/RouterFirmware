@@ -1,0 +1,172 @@
+# =============================================================================
+# 工作流名称: Upstream Source Update Checker
+# 描述: 定期检查 OpenWrt / ImmortalWrt 上游开发分支（快照版）是否有新提交，
+#       有新提交时通过 repository_dispatch 事件触发 Router Firmware Builder 编译。
+#
+# 触发条件:
+#   schedule:
+#     - 每周五 UTC 2:00 自动执行 (北京时间 10:00)
+#   workflow_dispatch:
+#     - 手动触发，可把 update 设为 true 强制触发编译（忽略缓存），
+#       可用 firmware 只检查指定固件
+#
+# 检查对象:
+#   跟踪 config/site.json 中声明了 snapshots: true 的固件——仓库地址取自
+#   firmwares[].repo、分支取自 firmwares[].branch、设备 profile 取自 defaults.profile。
+#   工作流里不写死任何固件数据（脚本见 scripts/source-update.sh）：新增固件只需在
+#   site.json 补齐 repo / branch，声明了 snapshots 却缺字段会让本工作流变红。
+#
+# 触发去重:
+#   每个固件各有一条缓存记录（key: HEAD-<固件>-<提交>），同一提交只触发一次编译。
+#   缓存键带固件名：上游是 fork 关系，同一提交可能同时出现在两个仓库里，不带固件名
+#   会让后来者误判成"已编译过"而漏掉一次构建。
+#   注意：由 OpenWrt / ImmortalWrt 两个独立检查工作流合并而来（缓存键随之变化），
+#   合并后的首次运行两个固件都会各补一次编译，此后恢复"仅新提交触发"。
+#
+# 所需 Secrets:
+#   ACTIONS_TRIGGER_PAT - 具有 repo 权限的 Personal Access Token，
+#                          用于跨工作流触发 repository_dispatch 事件
+# =============================================================================
+
+name: Upstream Source Update Checker
+
+# ----------------------------- 全局环境变量 ----------------------------------
+env:
+  TZ: Asia/Shanghai # 设置时区，确保日志时间准确
+
+# ----------------------------- 触发事件配置 ----------------------------------
+on:
+  schedule:
+    # 每周五 UTC 2:00 执行 (cron 使用 UTC 时间)
+    - cron: "0 2 * * 5"
+  workflow_dispatch:
+    inputs:
+      update:
+        description: "强制触发编译 (设为 true 则忽略缓存)"
+        required: false
+        default: "false"
+      firmware:
+        description: "只检查指定固件 (留空 = 检查全部)"
+        required: false
+        default: ""
+
+# =============================================================================
+# Job: plan
+# 职责: 由 site.json 推导需要检查的「固件 + 上游分支」矩阵，供 check job 使用
+# =============================================================================
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5 # 本 job 仅做静态解析，耗时极短
+    permissions:
+      contents: read # 签出仓库读取 site.json
+      actions: write # 清理旧工作流运行记录
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 签出仓库，读取 config/site.json 与检查脚本
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 生成检查矩阵
+      # 输出形如 [{"firmware":"openwrt","title":"OpenWrt","url":"...","branch":"main"}]
+      # 无跟踪目标时输出 []，check job 会据此跳过
+      # -----------------------------------------------------------------------
+      - name: 生成检查矩阵
+        id: plan
+        env:
+          INPUT_FIRMWARE: ${{ github.event.inputs.firmware }}
+        run: |
+          matrix="$(bash "${GITHUB_WORKSPACE}/scripts/source-update.sh" plan \
+            --firmware="${INPUT_FIRMWARE}")"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 清理过旧的工作流运行记录，保持仓库整洁
+      # 清理失败不应阻断更新检查，故标记 continue-on-error
+      # -----------------------------------------------------------------------
+      - name: 清理旧工作流运行
+        if: always() # 无论前面步骤成功与否都执行
+        continue-on-error: true
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 7
+          keep_minimum_runs: 7
+
+  # ===========================================================================
+  # Job: check
+  # 职责: 并发检查各固件上游分支的最新提交，为新提交派发编译
+  # ===========================================================================
+  check:
+    runs-on: ubuntu-latest
+    needs: plan
+    # 没有跟踪目标时矩阵为空，直接跳过（空矩阵会导致 job 报错）
+    if: needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]'
+    timeout-minutes: 5 # 仅查询分支引用，耗时极短
+    permissions:
+      contents: read # 签出仓库以调用检查脚本
+    strategy:
+      fail-fast: false # 某个固件检查失败不影响其他固件
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      # 同一固件的多次检查排队执行，避免重复触发
+      group: ${{ github.workflow }}-${{ matrix.firmware }}
+      cancel-in-progress: false
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 签出仓库（调用 scripts/source-update.sh）
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 读取上游分支最新提交
+      # 只查分支引用（git ls-remote），不下载上游对象
+      # -----------------------------------------------------------------------
+      - name: 获取上游最新 Commit
+        id: getHash
+        env:
+          FIRMWARE: ${{ matrix.firmware }}
+        run: |
+          commit="$(bash "${GITHUB_WORKSPACE}/scripts/source-update.sh" head \
+            --firmware="${FIRMWARE}")"
+          echo "commitHash=${commit}" >> "$GITHUB_OUTPUT"
+          echo "上游 ${{ matrix.title }} [${{ matrix.branch }}] 最新 Commit: ${commit}"
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 用缓存判断该提交是否已触发过编译
+      # 缓存未命中说明是新提交，需要触发构建
+      # -----------------------------------------------------------------------
+      - name: 比较 Commit 缓存
+        id: cacheHash
+        uses: actions/cache@v5
+        with:
+          path: .commitHash # 缓存一个标记文件
+          key: HEAD-${{ matrix.firmware }}-${{ steps.getHash.outputs.commitHash }}
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 记录新提交，供下次运行命中缓存
+      # -----------------------------------------------------------------------
+      - name: 保存新 Commit Hash
+        if: steps.cacheHash.outputs.cache-hit != 'true'
+        run: |
+          echo "${{ steps.getHash.outputs.commitHash }}" > .commitHash
+          echo "已记录新的 Commit Hash"
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 触发 Router Firmware Builder 编译快照版
+      # 条件: 有新提交 (缓存未命中) 或手动强制更新 (update == 'true')
+      # 通过 repository_dispatch 将固件参数传递给构建工作流
+      # -----------------------------------------------------------------------
+      - name: 触发构建工作流
+        if: steps.cacheHash.outputs.cache-hit != 'true' || github.event.inputs.update == 'true'
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: ${{ matrix.title }} Source Code Update
+          client-payload: '{"firmware": "${{ matrix.firmware }}", "version": "snapshots", "profile": "${{ matrix.profile }}"}'

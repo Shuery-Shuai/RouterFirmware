@@ -32,9 +32,19 @@
 | 工作流文件名                     | 用途                                                   | 触发方式                                                                                                                                            |
 | -------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rtfw-builder.yml`               | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
-| `immortalwrt-update-checker.yml` | 每 3 天检查 ImmortalWrt 上游源码更新，自动触发编译     | ① 定时触发（UTC 16:00）<br>② 手动强制触发                                                                                                           |
-| `openwrt-update-checker.yml`     | 每周五检查 OpenWrt 上游源码更新，自动触发编译          | ① 定时触发（UTC 2:00）<br>② 手动强制触发                                                                                                            |
+| `source-update-checker.yml`      | 每周五检查上游开发分支更新，自动编译快照版（两个固件） | ① 定时触发（UTC 2:00）<br>② 手动强制触发（`update`）<br>③ 手动指定单个固件（`firmware`）                                                            |
 | `upstream-tag-checker.yml`       | 每天检查上游版本 Tag，自动编译 stable/oldstable 发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
+
+### 源码（快照版）更新检测
+
+`source-update-checker.yml` 每周五检查上游开发分支是否有新提交，有新提交就自动编译快照版：
+
+- **检查范围**：`config/site.json` 中声明了 `snapshots: true` 的固件；仓库地址取自 `firmwares[].repo`、分支取自 `firmwares[].branch`
+- **不写死数据**：合并前两个工作流各自把固件名 / 仓库 / 分支写在 `env` 里，现在只从配置读——新增固件只需在 `site.json` 补齐 `repo` 与 `branch`，声明了 `snapshots: true` 却缺字段会让工作流变红（不做静默漏检）
+- **检测即编译**：分支只有一份来源，编译侧（`source-management.sh`）与检测侧（`source-update.sh`）读同一个字段，不会出现「检测的分支和真正编译的分支不是一回事」
+- **只看引用**：用 `git ls-remote` 读分支 tip，不下载上游对象（合并前是 `git clone --depth 1`）
+- **触发去重**：每个固件各有一条缓存记录（`HEAD-<固件>-<提交>`），同一提交只触发一次编译；`update` 设为 `true` 可强制重编，`firmware` 可只跑其中一个固件
+- **首次运行**：合并前两个工作流各自去重，合并后缓存键变了，因此第一次运行会为两个固件各补一次编译，之后只随新提交触发
 
 ### 版本 Tag 跟踪
 
@@ -566,8 +576,7 @@ LOG_TO_SYSLOG=1 replace-apk-source.sh
 RouterFirmware/
 ├── .github/workflows/              # GitHub Actions 工作流
 │   ├── rtfw-builder.yml            # 固件构建与部署
-│   ├── immortalwrt-update-checker.yml # ImmortalWrt 更新检测
-│   ├── openwrt-update-checker.yml  # OpenWrt 更新检测
+│   ├── source-update-checker.yml   # 上游源码（快照版）更新检测（两个固件共用一个工作流）
 │   └── upstream-tag-checker.yml    # 上游版本 Tag 检测（正式版自动编译）
 ├── scripts/                        # 构建脚本（含详细注释）
 │   ├── make.sh                     # 主构建脚本
@@ -579,9 +588,10 @@ RouterFirmware/
 │   ├── build.sh                    # 执行编译
 │   ├── copy-bin-files.sh           # 复制编译产物
 │   ├── upstream-tag.sh             # 上游版本 Tag 检查
+│   ├── source-update.sh            # 上游开发分支检查（快照版更新检测）
 │   ├── prune-releases.py           # 按保留数量裁剪历史稳定版
 │   ├── verify-site-structure.sh    # 发布前校验站点目录结构
-│   └── tests/                      # 脚本回归测试（prune-releases-test.sh）
+│   └── tests/                      # 脚本回归测试（prune-releases-test.sh 等）
 ├── public/                         # 公共资源
 │   ├── assets/                     # 设备配置与脚本资源
 │   │   ├── bananapi_bpi-r4/        # BPI-R4 专属配置
@@ -613,7 +623,7 @@ RouterFirmware/
 - **Shell 脚本**: 遵循 [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html)
 - **注释**: 使用中文注释，详细说明功能和用法
 - **函数注释**: 包含 Globals、Arguments、Outputs、Returns、Examples
-- **测试**: 使用 `bash -n` 检查语法
+- **测试**: 使用 `bash -n` 检查语法；改动脚本时同时跑 `scripts/tests/` 下对应的离线回归测试
 
 ### 提交流程
 

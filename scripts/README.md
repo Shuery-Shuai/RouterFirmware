@@ -27,6 +27,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **public-compressor.sh** - 将 public 目录打包为 zip 压缩包
 - **public-uploader.sh** - 上传 zip 包到 GitHub Release 并返回直链，支持 Token / gh CLI 认证
 - **upstream-tag.sh** - 上游版本 Tag 检查（输出跟踪矩阵与发行线最新 Tag）
+- **source-update.sh** - 上游开发分支检查（输出检查矩阵与分支最新提交）
 - **prune-releases.py** - 按 keep_stable 裁剪发布树中的历史稳定版（保留最近 N 个）
 - **fetch-upstream-versions.py** - 抓取上游官方版本事实（.versions.json），失败回退缓存
 - **generate-site-landing.py** - 生成站点首页与各发行版首页（只链接真实存在的目录）
@@ -307,6 +308,38 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - 上游仓库地址取自 `site.json` 的 `firmwares[].repo`（脚本里不写死发行版数据）；未声明 `repo` 的固件会被 `plan` 跳过、被 `select` 报错
 - 日志一律写入 stderr，stdout 只输出结果，便于工作流捕获
 
+#### source-update.sh
+
+```bash
+./source-update.sh plan [--config=PATH] [--firmware=FW]
+./source-update.sh head [--config=PATH] --firmware=FW
+./source-update.sh --help
+```
+
+示例：
+
+```bash
+# 输出检查矩阵（供 GitHub Actions matrix 使用）
+./source-update.sh plan
+
+# 只检查一个固件
+./source-update.sh plan --firmware=openwrt
+
+# 输出该固件上游开发分支的最新提交
+./source-update.sh head --firmware=immortalwrt
+```
+
+功能：读取 `config/site.json` 中声明了 `snapshots: true` 的固件，通过 `git ls-remote` 读取其上游开发分支的最新提交，供 `source-update-checker.yml` 判断是否需要触发快照版编译。
+
+- `plan`：输出单行 JSON 数组（matrix include 列表），元素含 `firmware` / `title` / `url` / `branch` / `profile`；无跟踪目标时输出 `[]`
+- `head`：输出该固件 `branch` 分支 tip 的 SHA；分支不存在、返回非提交对象或固件不在跟踪范围内都报错退出（不把"查不到"当成"没有更新"）
+- 仓库地址与分支分别取自 `site.json` 的 `firmwares[].repo` 与 `firmwares[].branch`，设备 profile 取自 `defaults.profile`——脚本里不写死固件数据
+- 声明了 `snapshots: true` 却缺 `repo` / `branch`、缺 `defaults.profile`、指定了不在跟踪范围内的固件，`plan` 都会报错退出（避免"看着在检测、其实没检测"）
+- 同一份 `branch` 也是编译侧 `source-management.sh` 挑分支的依据，因此「检测的分支」与「真正克隆编译的分支」永远一致
+- 是否已经编译过由调用方（工作流缓存）判断，脚本不维护基线
+- 日志一律写入 stderr，stdout 只输出结果，便于工作流捕获
+- 回归测试：`bash scripts/tests/source-update-test.sh`（全程离线，43 条断言，git 用 stub 顶替）
+
 #### prune-releases.py
 
 ```bash
@@ -444,16 +477,19 @@ downloads.immortalwrt.org 的 `dir-index.cgi` 输出。
 | `defaults.site_icon.lan_groups` | 站点图标网口分组（如 `2+2`） | build-site-icon.py |
 | `firmwares[].id` | 发行版目录名，也是发布树里的一级目录 | 全部站点脚本 |
 | `firmwares[].title` / `title_en` | 展示名（双语） | 落地页生成器 |
-| `firmwares[].repo` | 上游 Git 仓库（Tag 跟踪用，可选） | upstream-tag.sh |
+| `firmwares[].repo` | 上游 Git 仓库（Tag 跟踪、快照版检测与源码克隆共用，可选） | upstream-tag.sh、source-update.sh、source-management.sh |
+| `firmwares[].branch` | 上游开发分支（快照版检测与编译共用，可选） | source-update.sh、source-management.sh |
 | `firmwares[].downloads` | 上游下载站根目录（版本事实与官方站根，可选） | fetch-upstream-versions.py、compare-with-official.sh |
 | `firmwares[].stable` / `oldstable` | 当前 / 旧稳定版声明（意图；也用于 prune 钉住与发行线跟踪） | 落地页、prune、upstream-tag |
-| `firmwares[].snapshots` | 是否展示开发快照栏目 | 落地页生成器 |
+| `firmwares[].snapshots` | 是否展示开发快照栏目；同时是快照版更新检测的跟踪开关 | 落地页生成器、source-update.sh |
 | `firmwares[].archive` | 手工归档声明（钉住不删；页面归档栏目已改为从发布树派生） | prune-releases.py |
 | `firmwares[].keep_stable` | 固件级保留数量覆盖 | prune-releases.py |
 
 > 缺省值一律遵循「命令行参数 → `config/site.json` → 脚本内兜底字面值」的优先级；
 > shell 脚本用 `common.sh` 的 `config_value` / `config_firmware_value` 读取配置
-> （优先 python3，退回 jq，都不可用时由调用方兜底）。
+> （优先 python3，退回 jq，都不可用时由调用方兜底）；
+> 上游仓库与开发分支另有 `firmware_repo_url` / `firmware_snapshot_branch` 两个出口，
+> 检测（source-update.sh）与编译（source-management.sh）都从这里取，保证两边一致。
 
 ## 编译产物目录结构
 

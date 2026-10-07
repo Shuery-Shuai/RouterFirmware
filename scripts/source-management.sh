@@ -55,13 +55,17 @@ readonly GIT_CLEAN_TIMEOUT=300
 # 根据固件类型和版本号，计算出应该克隆或切换的 Git 引用。
 #
 # 版本映射规则:
-#   - snapshots + openwrt     → main
-#   - snapshots + immortalwrt → master
-#   - 具体版本号              → v{version} (标签)
+#   - snapshots   → config/site.json 中该固件声明的开发分支（firmwares[].branch；
+#                    缺项时退回历史映射 openwrt → main、其余 → master）
+#   - 具体版本号  → v{version} (标签)
+#
+# 分支取自配置而不是写死在脚本里：更新检测（source-update.sh）查的是同一个字段，
+# 因此「检测到新提交的分支」与「真正克隆编译的分支」永远一致。
 #
 # Arguments:
 #   $1 - firmware 类型 (openwrt/immortalwrt)
 #   $2 - 版本号 (snapshots/版本号)
+#   $3 - 配置文件（可选，默认: config/site.json）
 #
 # Outputs:
 #   分支名或标签名到 stdout
@@ -77,10 +81,11 @@ readonly GIT_CLEAN_TIMEOUT=300
 _get_target_ref() {
   local firmware="$1"
   local version="$2"
+  local config="${3:-}"
 
   if [[ "${version}" == "snapshots" ]]; then
-    # snapshots 版本使用主分支
-    [[ "${firmware}" == "openwrt" ]] && echo "main" || echo "master"
+    # snapshots 版本使用上游开发分支（配置里声明，脚本不写死）
+    firmware_snapshot_branch "${firmware}" ${config:+"${config}"}
   else
     # 具体版本使用标签
     echo "v${version}"
@@ -451,16 +456,20 @@ main() {
   # 使用 timeout 防止克隆操作挂起（默认 10 分钟超时）。
   #######################################
   else
+    # 仓库地址同样取自 config/site.json（firmwares[].repo），与更新检测对齐
+    local repo_url
+    repo_url="$(firmware_repo_url "${firmware}")"
+
     log INFO "克隆 ${firmware} ${target}"
-    log DEBUG "仓库地址: https://github.com/${firmware}/${firmware}.git"
+    log DEBUG "仓库地址: ${repo_url}"
 
     local clone_log
     clone_log="$(mktemp)"
     if ! run_capture "${clone_log}" timeout 600 git clone --depth=1 --branch "${target}" \
-      "https://github.com/${firmware}/${firmware}.git" "${source_dir}"; then
+      "${repo_url}" "${source_dir}"; then
       # 克隆失败，记录详细错误信息
       log FATAL "克隆失败"
-      log ERROR "仓库: https://github.com/${firmware}/${firmware}.git"
+      log ERROR "仓库: ${repo_url}"
       log ERROR "分支/标签: ${target}"
       log ERROR "目标目录: ${source_dir}"
       log ERROR "失败输出尾部:"
@@ -476,5 +485,8 @@ main() {
   log INFO "源码已就位: ${source_dir}"
 }
 
-# 执行主函数，传递所有命令行参数
-main "$@"
+# 直接被调用时执行主函数；被测试脚本 source 时只提供内部函数
+# （测试用 _get_target_ref 断言「检测分支 = 编译分支」，见 scripts/tests/）
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
