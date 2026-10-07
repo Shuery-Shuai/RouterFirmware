@@ -7,15 +7,17 @@
 #   2. select - 在指定发行线上挑选需要编译的最新版本 Tag
 #
 # 发行线取自 config/site.json 中各固件声明的 stable / oldstable
-# （取主次版本号，如 25.12.5 → 25.12）。每条发行线优先选择最新正式版 Tag
-# （如 v25.12.6）；该发行线尚无正式版时，回退到最新预发布版（rc/beta/alpha）。
+# （取主次版本号，如 25.12.5 → 25.12）。上游仓库地址同样来自 site.json 的
+# firmwares[].repo——脚本里不写死任何发行版数据，未声明 repo 的固件会被跳过
+# 并告警。每条发行线优先选择最新正式版 Tag（如 v25.12.6）；该发行线尚无正式版
+# 时，回退到最新预发布版（rc/beta/alpha）。
 #
 # 本脚本只负责「挑出版本」，某个版本是否已经编译过由调用方（工作流缓存）
 # 判断，因此新增发行线只需在 site.json 中声明，无需额外维护基线。
 #
 # 用法:
 #   ./scripts/upstream-tag.sh plan [--config=PATH]
-#   ./scripts/upstream-tag.sh select --firmware=FW --line=LINE
+#   ./scripts/upstream-tag.sh select [--config=PATH] --firmware=FW --line=LINE
 #   ./scripts/upstream-tag.sh --help
 #
 # 参数:
@@ -71,15 +73,37 @@ readonly DEFAULT_CONFIG="config/site.json"
 readonly REMOTE_TIMEOUT=120
 
 #######################################
-# 上游仓库登记表
+# 读取某个固件声明的上游仓库（内部函数）
 #
-# 键为固件类型（与 config/site.json 的 id 一致），值为上游 Git 仓库地址。
-# 新增固件时在此登记；未登记的固件会被 plan 跳过并给出告警。
+# 仓库地址来自 config/site.json 的 firmwares[].repo——脚本里不写死发行版数据，
+# 新增固件只需在 site.json 里声明 id 与 repo。
+#
+# Arguments:
+#   $1 - site.json 路径
+#   $2 - 固件类型（id）
+#
+# Outputs:
+#   仓库地址到 stdout；未声明时输出空
+#
+# Returns:
+#   0 - 成功读取（未声明也算成功，输出为空）
+#   1 - jq 不可用或配置解析失败
+#
+# Examples:
+#   _firmware_repo "config/site.json" "openwrt"
 #######################################
-declare -A UPSTREAM_REPOS=(
-  [openwrt]="https://github.com/openwrt/openwrt"
-  [immortalwrt]="https://github.com/immortalwrt/immortalwrt"
-)
+_firmware_repo() {
+  local config="$1"
+  local firmware="$2"
+
+  if ! command -v jq >/dev/null 2>&1; then
+    log ERROR "缺少 jq，无法解析 ${config}"
+    return 1
+  fi
+  jq -r --arg id "${firmware}" \
+    'first(.firmwares[]? | select(.id == $id) | (.repo // "")) // ""' \
+    "${config}" 2>/dev/null
+}
 
 #######################################
 # 解析发行线（主次版本号，内部函数）
@@ -137,8 +161,8 @@ _plan_matrix() {
   declare -A seen_lines=()
   local firmware title declared line key repo
 
-  # jq: 逐固件输出 "固件ID \t 展示名 \t 已声明版本"，stable 在前、oldstable 在后
-  while IFS=$'\t' read -r firmware title declared; do
+  # jq: 逐固件输出 "固件ID \t 展示名 \t 上游仓库 \t 已声明版本"，stable 在前、oldstable 在后
+  while IFS=$'\t' read -r firmware title repo declared; do
     [[ -z "${firmware}" || -z "${declared}" ]] && continue
 
     line="$(_parse_release_line "${declared}")"
@@ -148,9 +172,8 @@ _plan_matrix() {
       continue
     fi
 
-    repo="${UPSTREAM_REPOS[${firmware}]:-}"
     if [[ -z "${repo}" ]]; then
-      log WARN "固件 ${firmware} 未登记上游仓库，跳过 ${declared}"
+      log WARN "固件 ${firmware} 未在 ${config} 声明 repo，跳过 ${declared}"
       continue
     fi
 
@@ -161,9 +184,10 @@ _plan_matrix() {
     .firmwares[]
     | .id as $id
     | .title as $title
+    | (.repo // "") as $repo
     | .stable, .oldstable
     | select(. != null and . != "")
-    | "\($id)\t\($title)\t\(.)"
+    | "\($id)\t\($title)\t\($repo)\t\(.)"
   ' "${config}")
 
   log INFO "跟踪 ${entry_count} 条发行线"
@@ -213,20 +237,27 @@ _fetch_remote_tags() {
 # Outputs:
 #   最新的 Tag（含 v 前缀）到 stdout；该发行线无 Tag 时不输出内容
 #
+# Arguments:
+#   $1 - site.json 路径
+#   $2 - 固件类型（id）
+#   $3 - 发行线，如 25.12
+#
 # Returns:
 #   0 - 成功
-#   1 - 固件未登记或上游访问失败
+#   1 - 固件未声明 repo 或上游访问失败
 #
 # Examples:
-#   _select_latest_tag "openwrt" "25.12"
+#   _select_latest_tag "config/site.json" "openwrt" "25.12"
 #######################################
 _select_latest_tag() {
-  local firmware="$1"
-  local line="$2"
-  local repo_url="${UPSTREAM_REPOS[${firmware}]:-}"
+  local config="$1"
+  local firmware="$2"
+  local line="$3"
+  local repo_url
+  repo_url="$(_firmware_repo "${config}" "${firmware}")" || return 1
 
   if [[ -z "${repo_url}" ]]; then
-    log ERROR "固件 ${firmware} 未登记上游仓库"
+    log ERROR "固件 ${firmware} 未在 ${config} 声明 repo"
     return 1
   fi
 
@@ -279,7 +310,7 @@ main() {
       "<plan|select> [options]" \
       "  plan                    输出跟踪矩阵 (JSON 数组)" \
       "  select                  输出发行线上最新的版本 Tag" \
-      "  --config=PATH           site.json 路径 (默认: config/site.json，仅 plan)" \
+      "  --config=PATH           site.json 路径 (默认: config/site.json)" \
       "  --firmware=FW           固件类型 (仅 select)" \
       "  --line=LINE             发行线，如 25.12 (仅 select)" \
       "  -h, --help              显示此帮助信息"
@@ -299,7 +330,7 @@ main() {
       log ERROR "使用 --help 查看完整用法"
       exit 1
     fi
-    _select_latest_tag "${firmware}" "${line}"
+    _select_latest_tag "${PARSED_ARGS['config']:-${DEFAULT_CONFIG}}" "${firmware}" "${line}"
     ;;
   *)
     log ERROR "未知命令: ${command:-（空）}"

@@ -651,6 +651,96 @@ require_file() {
   fi
 }
 
+# 实例配置的默认路径（仓库内的 config/site.json，含 defaults 段）。
+# 用 common.sh 自身位置推导成绝对路径，脚本从任意目录调用都能读到。
+_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly _REPO_ROOT
+readonly SITE_CONFIG_DEFAULT="${_REPO_ROOT}/config/site.json"
+
+#######################################
+# 读取实例配置值（config/site.json 的点分键路径）
+#
+# 设备 profile、上游地址、发行线等实例数据都写在 config/site.json 里，脚本只读取、
+# 不写死。取值优先用 python3，其次 jq；两者都不可用、配置缺失或键不存在时输出空，
+# 由调用方用 ${VAR:-字面缺省值} 兜底（缺省值仍是可改的：改配置即可覆盖）。
+#
+# Arguments:
+#   $1 - 点分键路径（如 defaults.profile）
+#   $2 - 配置文件（可选，默认: ${SITE_CONFIG_DEFAULT}）
+#
+# Outputs:
+#   取到的字符串到 stdout（未取到则输出空行）
+#
+# Returns:
+#   0 - 无论取没取到都返回 0（由调用方判断空值）
+#
+# Examples:
+#   profile="$(config_value defaults.profile)"
+#   profile="${profile:-bananapi_bpi-r4}"
+#######################################
+config_value() {
+  local key="$1"
+  local config="${2:-${SITE_CONFIG_DEFAULT}}"
+
+  [[ -f "${config}" ]] || return 0
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import json, sys
+try:
+    value = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    sys.exit(0)
+for part in sys.argv[2].split("."):
+    if not isinstance(value, dict) or part not in value:
+        sys.exit(0)
+    value = value[part]
+print(value if isinstance(value, str) else "")
+' "${config}" "${key}" 2>/dev/null
+  elif command -v jq >/dev/null 2>&1; then
+    jq -r --arg path "${key}" 'getpath($path | split(".")) // ""' "${config}" 2>/dev/null |
+      grep -v '^null$'
+  fi
+}
+
+#######################################
+# 读取某个固件条目里的配置值（config/site.json 的 firmwares[]）
+#
+# Arguments:
+#   $1 - 固件 id（匹配 firmwares[].id）
+#   $2 - 条目内的键（如 downloads / repo）
+#   $3 - 配置文件（可选，默认: ${SITE_CONFIG_DEFAULT}）
+#
+# Outputs:
+#   取到的字符串到 stdout（未取到则输出空行）
+#
+# Examples:
+#   url="$(config_firmware_value openwrt downloads)"
+#######################################
+config_firmware_value() {
+  local firmware="$1"
+  local key="$2"
+  local config="${3:-${SITE_CONFIG_DEFAULT}}"
+
+  [[ -f "${config}" ]] || return 0
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import json, sys
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    sys.exit(0)
+entry = next((item for item in data.get("firmwares") or []
+              if isinstance(item, dict) and item.get("id") == sys.argv[2]), None)
+value = (entry or {}).get(sys.argv[3])
+print(value if isinstance(value, str) else "")
+' "${config}" "${firmware}" "${key}" 2>/dev/null
+  elif command -v jq >/dev/null 2>&1; then
+    jq -r --arg id "${firmware}" --arg key "${key}" \
+      'first(.firmwares[]? | select(.id == $id) | .[$key] // "") // ""' "${config}" 2>/dev/null |
+      grep -v '^null$'
+  fi
+}
+
 #######################################
 # 检查目录是否存在，不存在则退出脚本
 #

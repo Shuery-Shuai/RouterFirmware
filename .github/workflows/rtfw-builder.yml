@@ -123,15 +123,23 @@ jobs:
 
     steps:
       # -----------------------------------------------------------------------
-      # 步骤 1: 解析输入参数（适用于所有触发事件）
-      # 统一处理 workflow_dispatch、repository_dispatch 和默认值
+      # 步骤 1: 签出当前仓库代码，获取脚本与实例配置
+      #   放在最前面：解析输入参数的缺省值要读 config/site.json
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 解析输入参数（适用于所有触发事件）
+      #   统一处理 workflow_dispatch、repository_dispatch，并把没给值的项按
+      #   config/site.json 的 defaults.* 补全——缺省值是配置，不是脚本里的常量。
       # -----------------------------------------------------------------------
       - name: 解析输入参数
         id: config
         env:
-          INPUT_FIRMWARE: ${{ github.event.inputs.firmware || github.event.client_payload.firmware || 'immortalwrt' }}
-          INPUT_VERSION: ${{ github.event.inputs.version || github.event.client_payload.version || 'snapshots' }}
-          INPUT_PROFILE: ${{ github.event.inputs.profile || github.event.client_payload.profile || 'bananapi_bpi-r4' }}
+          INPUT_FIRMWARE: ${{ github.event.inputs.firmware || github.event.client_payload.firmware || '' }}
+          INPUT_VERSION: ${{ github.event.inputs.version || github.event.client_payload.version || '' }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile || github.event.client_payload.profile || '' }}
           INPUT_ASK_MENUCONFIG: ${{ github.event.inputs.ask-menuconfig || github.event.client_payload.ask-menuconfig || 'false' }}
           INPUT_JOBS: ${{ github.event.inputs.jobs || github.event.client_payload.jobs || '' }}
           INPUT_CACHE: ${{ github.event.inputs.cache || github.event.client_payload.cache || 'true' }}
@@ -140,9 +148,20 @@ jobs:
           INPUT_ARCHIVE_URL: ${{ github.event.inputs.archive-url || github.event.client_payload.archive-url || '' }}
           INPUT_MERGE_HISTORY: ${{ github.event.inputs.merge-history || github.event.client_payload.merge-history || 'true' }}
         run: |
-          echo "firmware=${INPUT_FIRMWARE}" >> $GITHUB_OUTPUT
-          echo "version=${INPUT_VERSION}" >> $GITHUB_OUTPUT
-          echo "profile=${INPUT_PROFILE}" >> $GITHUB_OUTPUT
+          default_firmware="$(jq -r '.defaults.firmware // .firmwares[0].id // ""' config/site.json)"
+          default_version="$(jq -r '.defaults.version // "snapshots"' config/site.json)"
+          default_profile="$(jq -r '.defaults.profile // ""' config/site.json)"
+          firmware="${INPUT_FIRMWARE:-${default_firmware}}"
+          version="${INPUT_VERSION:-${default_version}}"
+          profile="${INPUT_PROFILE:-${default_profile}}"
+          if [[ -z "${firmware}" || -z "${version}" || -z "${profile}" ]]; then
+            echo "错误：firmware/version/profile 无法确定"
+            echo "请在 config/site.json 的 defaults 里声明，或用工作流输入显式指定"
+            exit 1
+          fi
+          echo "firmware=${firmware}" >> $GITHUB_OUTPUT
+          echo "version=${version}" >> $GITHUB_OUTPUT
+          echo "profile=${profile}" >> $GITHUB_OUTPUT
           echo "ask-menuconfig=${INPUT_ASK_MENUCONFIG}" >> $GITHUB_OUTPUT
           echo "jobs=${INPUT_JOBS}" >> $GITHUB_OUTPUT
           echo "use-cache=${INPUT_CACHE}" >> $GITHUB_OUTPUT
@@ -152,9 +171,9 @@ jobs:
           echo "merge-history=${INPUT_MERGE_HISTORY}" >> $GITHUB_OUTPUT
           # 打印最终生效的配置，方便调试
           echo "::group::Effective Configuration"
-          echo "Firmware: ${INPUT_FIRMWARE}"
-          echo "Version: ${INPUT_VERSION}"
-          echo "Profile: ${INPUT_PROFILE}"
+          echo "Firmware: ${firmware}"
+          echo "Version: ${version}"
+          echo "Profile: ${profile}"
           echo "AskMenuconfig: ${INPUT_ASK_MENUCONFIG}"
           echo "Cache: ${INPUT_CACHE}"
           echo "DebugSSH: ${INPUT_DEBUG_SSH}"
@@ -164,7 +183,7 @@ jobs:
           echo "::endgroup::"
 
       # -----------------------------------------------------------------------
-      # 步骤 2: 输出运行环境基本信息（触发事件、分支、系统信息）
+      # 步骤 3: 输出运行环境基本信息（触发事件、分支、系统信息）
       # -----------------------------------------------------------------------
       - name: 打印运行环境信息
         run: |
@@ -174,7 +193,7 @@ jobs:
           echo "系统信息: $(uname -a)"
 
       # -----------------------------------------------------------------------
-      # 步骤 3: 显示当前 Runner 的 CPU / 内存 / 磁盘信息，辅助排查性能问题
+      # 步骤 4: 显示当前 Runner 的 CPU / 内存 / 磁盘信息，辅助排查性能问题
       # -----------------------------------------------------------------------
       - name: 检查服务器性能
         run: |
@@ -192,7 +211,7 @@ jobs:
           df -hT
 
       # -----------------------------------------------------------------------
-      # 步骤 4: 使用社区 Action 清理不必要的软件包和缓存，释放磁盘空间
+      # 步骤 5: 使用社区 Action 清理不必要的软件包和缓存，释放磁盘空间
       # -----------------------------------------------------------------------
       - name: 优化磁盘空间
         uses: hugoalh/disk-space-optimizer-ghaction@v0.8.1
@@ -214,12 +233,6 @@ jobs:
           npm_prune: "True"
           npm_clean: "True"
           os_swap: "True"
-
-      # -----------------------------------------------------------------------
-      # 步骤 5: 签出当前仓库代码，获取编译脚本和配置文件
-      # -----------------------------------------------------------------------
-      - name: 签出仓库
-        uses: actions/checkout@v6
 
       # -----------------------------------------------------------------------
       # 步骤 6: 安装编译 OpenWrt 所需的系统依赖，并清理无用组件
@@ -570,17 +583,43 @@ jobs:
             --protect="${BUILD_VERSION}"
 
       # -----------------------------------------------------------------------
+      # 步骤 6 前置 A: 恢复上次抓取的上游版本事实
+      #   与 --output 同一路径：抓取失败时脚本会退化成读取它（state=cache），
+      #   页面因此仍能给出「官方已发布 X」的提示，而不是被断网拖垮部署。
+      # -----------------------------------------------------------------------
+      - name: 恢复上游版本事实缓存
+        uses: actions/cache@v5
+        with:
+          path: upstream-versions.json
+          key: upstream-versions-${{ github.run_id }}
+          restore-keys: |
+            upstream-versions-
+
+      # -----------------------------------------------------------------------
+      # 步骤 6 前置 B: 抓取上游版本事实（官方 stable / oldstable 与版本列表）
+      #   continue-on-error：第三方站点抖动不该阻塞固件发布；失败时上面恢复的
+      #   缓存会兜底，覆盖率报告（步骤 7 后续）会显示数据是否来自缓存。
+      # -----------------------------------------------------------------------
+      - name: 抓取上游版本事实
+        continue-on-error: true
+        run: |
+          python3 "${{ github.workspace }}/scripts/fetch-upstream-versions.py" \
+            --config=config/site.json --output=upstream-versions.json
+
+      # -----------------------------------------------------------------------
       # 步骤 6: 生成目录列表页与落地页
       # 每个发布目录生成官方风格的 index.html；站点根与各发行版根生成中文落地页
-      # 落地页只按 site.json 声明渲染，不校验版本是否已发布（site.json 可先于构建更新）；
+      # 落地页按 site.json 的声明渲染，但只链接发布树里真实存在的目录（未构建的
+      # 版本渲染为灰字提示），因此 site.json 先于构建更新也不会产生死链；
+      # 上游版本事实用于把提示写准（官方已发布谁），缺失时退化为通用提示。
       # 发布树的目录格式由步骤 7 的守门脚本负责。
       # -----------------------------------------------------------------------
       - name: 生成目录列表与落地页
         run: |
           python3 "${{ github.workspace }}/scripts/generate-site-listings.py" \
-            --public-dir=public --quiet
+            --public-dir=public --config=config/site.json --quiet
           python3 "${{ github.workspace }}/scripts/generate-site-landing.py" \
-            --public-dir=public --config=config/site.json
+            --public-dir=public --config=config/site.json --upstream=upstream-versions.json
 
       # -----------------------------------------------------------------------
       # 步骤 7: 校验站点目录结构
@@ -591,6 +630,19 @@ jobs:
         run: |
           chmod +x "${{ github.workspace }}/scripts/verify-site-structure.sh"
           "${{ github.workspace }}/scripts/verify-site-structure.sh" --require-listings
+
+      # -----------------------------------------------------------------------
+      # 步骤 7 后续: 覆盖率报告（写入 Job Summary）
+      #   官方 stable / oldstable 与站点声明、发布树三方比对：缺哪条线、缺哪个
+      #   版本、哪些是本地自建，一眼可见。这里只报告不阻塞（发布本身是有效的），
+      #   升级为红灯的判断在 upstream-tag-checker.yml 的 coverage job。
+      # -----------------------------------------------------------------------
+      - name: 站点覆盖率报告
+        if: always()
+        run: |
+          python3 "${{ github.workspace }}/scripts/site-coverage.py" \
+            --config=config/site.json --upstream=upstream-versions.json \
+            --public-dir=public --fail-on=none --summary="$GITHUB_STEP_SUMMARY"
 
       # -----------------------------------------------------------------------
       # 步骤 8: 将 public/ 目录打包为 Pages Artifact

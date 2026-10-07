@@ -3,10 +3,25 @@
   "description": "Banana Pi BPI-R4 的 OpenWrt / ImmortalWrt 构建产物与软件包仓库。",
   "description_en": "Build artifacts and package repositories for Banana Pi BPI-R4 (OpenWrt / ImmortalWrt).",
   "keep_stable": 2,
+  "stylesheet": "https://downloads.immortalwrt.org/openwrt.css",
+  "package_key": "/assets/common/keys/public-key.pem",
+  "scripts_path": "/assets/",
+  "defaults": {
+    "firmware": "immortalwrt",
+    "version": "snapshots",
+    "profile": "bananapi_bpi-r4",
+    "target": "mediatek/filogic",
+    "device": "bananapi_bpi-r4",
+    "site_icon": {
+      "lan_groups": "2+2"
+    }
+  },
   "firmwares": [
     {
       "id": "immortalwrt",
       "title": "ImmortalWrt",
+      "repo": "https://github.com/immortalwrt/immortalwrt",
+      "downloads": "https://downloads.immortalwrt.org",
       "stable": "25.12.2",
       "oldstable": null,
       "snapshots": true,
@@ -15,6 +30,8 @@
     {
       "id": "openwrt",
       "title": "OpenWrt",
+      "repo": "https://github.com/openwrt/openwrt",
+      "downloads": "https://downloads.openwrt.org",
       "stable": "25.12.5",
       "oldstable": null,
       "snapshots": true,

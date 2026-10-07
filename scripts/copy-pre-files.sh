@@ -147,9 +147,9 @@ main() {
       "复制编译前配置文件到源码目录" \
       "[options] [firmware] [version] [profile]" \
       "  -h, --help              显示此帮助信息" \
-      "  --firmware=TYPE         固件类型 (openwrt|immortalwrt, 默认: immortalwrt)" \
-      "  --version=VER           版本号 (snapshots|版本号, 默认: snapshots)" \
-      "  --profile=PROF          设备 profile (默认: bananapi_bpi-r4)" \
+      "  --firmware=TYPE         固件类型 (openwrt|immortalwrt, 默认: config/site.json 的 defaults.firmware)" \
+      "  --version=VER           版本号 (snapshots|版本号, 默认: config/site.json 的 defaults.version)" \
+      "  --profile=PROF          设备 profile (默认: config/site.json 的 defaults.profile)" \
       "" \
       "位置参数:" \
       "  firmware                固件类型 (等同于 --firmware)" \
@@ -158,10 +158,15 @@ main() {
     exit 0
   fi
 
-  # 获取参数（优先使用命名参数，其次使用位置参数，最后使用默认值）
-  local firmware="${PARSED_ARGS['firmware']:-${PARSED_ARGS[_POSITIONAL_0]:-immortalwrt}}"
-  local version="${PARSED_ARGS['version']:-${PARSED_ARGS[_POSITIONAL_1]:-snapshots}}"
-  local profile="${PARSED_ARGS['profile']:-${PARSED_ARGS[_POSITIONAL_2]:-bananapi_bpi-r4}}"
+  # 获取参数（优先命名参数，其次位置参数，最后默认值）
+  # 缺省值来自 config/site.json 的 defaults.*，改配置即可，无需改脚本
+  local default_firmware default_version default_profile
+  default_firmware="$(config_value defaults.firmware)"
+  default_version="$(config_value defaults.version)"
+  default_profile="$(config_value defaults.profile)"
+  local firmware="${PARSED_ARGS['firmware']:-${PARSED_ARGS[_POSITIONAL_0]:-${default_firmware:-immortalwrt}}}"
+  local version="${PARSED_ARGS['version']:-${PARSED_ARGS[_POSITIONAL_1]:-${default_version:-snapshots}}}"
+  local profile="${PARSED_ARGS['profile']:-${PARSED_ARGS[_POSITIONAL_2]:-${default_profile:-bananapi_bpi-r4}}}"
 
   # 计算源目录和目标目录的绝对路径
   local src_dir="${SCRIPT_DIR}/../public"

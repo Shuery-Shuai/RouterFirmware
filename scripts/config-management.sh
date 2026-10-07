@@ -93,9 +93,9 @@ main() {
       "[options] [source_dir] [firmware] [version] [profile] [ask-menuconfig]" \
       "  -h, --help              显示此帮助信息" \
       "  --source-dir=PATH       源码目录路径 (默认: .)" \
-      "  --firmware=TYPE         固件类型 (openwrt|immortalwrt, 默认: immortalwrt)" \
-      "  --version=VER           版本号 (snapshots|版本号, 默认: snapshots)" \
-      "  --profile=PROF          设备 profile (默认: bananapi_bpi-r4)" \
+      "  --firmware=TYPE         固件类型 (openwrt|immortalwrt, 默认: config/site.json 的 defaults.firmware)" \
+      "  --version=VER           版本号 (snapshots|版本号, 默认: config/site.json 的 defaults.version)" \
+      "  --profile=PROF          设备 profile (默认: config/site.json 的 defaults.profile)" \
       "  --ask-menuconfig=BOOL   是否询问运行 menuconfig (true|false, 默认: false)" \
       "  --prompt-timeout=SEC    交互提示超时秒数 (0=永不超时, 默认: 60)" \
       "  --non-interactive       强制非交互：提示一律取默认值" \
@@ -109,11 +109,16 @@ main() {
     exit 0
   fi
 
-  # 获取参数（优先使用命名参数，其次使用位置参数，最后使用默认值）
+  # 获取参数（优先命名参数，其次位置参数，最后默认值）
+  # 缺省值来自 config/site.json 的 defaults.*，改配置即可，无需改脚本
+  local default_firmware default_version default_profile
+  default_firmware="$(config_value defaults.firmware)"
+  default_version="$(config_value defaults.version)"
+  default_profile="$(config_value defaults.profile)"
   local source_dir="${PARSED_ARGS['source-dir']:-${PARSED_ARGS[_POSITIONAL_0]:-.}}"
-  local firmware="${PARSED_ARGS['firmware']:-${PARSED_ARGS[_POSITIONAL_1]:-immortalwrt}}"
-  local version="${PARSED_ARGS['version']:-${PARSED_ARGS[_POSITIONAL_2]:-snapshots}}"
-  local profile="${PARSED_ARGS['profile']:-${PARSED_ARGS[_POSITIONAL_3]:-bananapi_bpi-r4}}"
+  local firmware="${PARSED_ARGS['firmware']:-${PARSED_ARGS[_POSITIONAL_1]:-${default_firmware:-immortalwrt}}}"
+  local version="${PARSED_ARGS['version']:-${PARSED_ARGS[_POSITIONAL_2]:-${default_version:-snapshots}}}"
+  local profile="${PARSED_ARGS['profile']:-${PARSED_ARGS[_POSITIONAL_3]:-${default_profile:-bananapi_bpi-r4}}}"
   local ask_menuconfig="${PARSED_ARGS['ask-menuconfig']:-${PARSED_ARGS[_POSITIONAL_4]:-false}}"
   local prompt_timeout="${PARSED_ARGS['prompt-timeout']:-${PROMPT_TIMEOUT:-60}}"
   local board

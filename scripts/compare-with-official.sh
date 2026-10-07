@@ -48,23 +48,6 @@ readonly REQUIRED_METADATA=(
 )
 
 #######################################
-# 根据固件名给出官方站根地址
-#
-# Arguments:
-#   $1 - 固件名
-#
-# Outputs:
-#   官方站根 URL 到 stdout
-#######################################
-_default_official_url() {
-  case "$1" in
-  openwrt) echo "https://downloads.openwrt.org" ;;
-  immortalwrt) echo "https://downloads.immortalwrt.org" ;;
-  *) echo "https://downloads.openwrt.org" ;;
-  esac
-}
-
-#######################################
 # 本地版本目录名（releases/<ver> 或 snapshots）
 #
 # Arguments:
@@ -200,19 +183,31 @@ main() {
       "[options]" \
       "  --firmware=NAME       固件名 (默认: openwrt)" \
       "  --version=VER          版本号或 snapshots (默认: snapshots)" \
-      "  --target=TARGET/SUB    target/subtarget (默认: mediatek/filogic)" \
-      "  --device=NAME          只比对本设备镜像 (默认: bananapi_bpi-r4)" \
-      "  --local-dir=DIR        本地目录（默认按固件/版本推导）" \
+      "  --target=TARGET/SUB    target/subtarget (默认: config/site.json 的 defaults.target)" \
+      "  --device=NAME          只比对本设备镜像 (默认: config/site.json 的 defaults.device)" \
+      "  --local-dir=DIR       本地目录（默认按固件/版本推导）" \
+      "  --official-url=URL     官方站根（默认取 config/site.json 的 firmwares[].downloads）" \
       "  --official-url=URL     官方站根" \
       "  --json                 以 JSON 输出汇总"
     exit 0
   fi
 
-  local firmware="${PARSED_ARGS['firmware']:-openwrt}"
-  local version="${PARSED_ARGS['version']:-snapshots}"
-  local target="${PARSED_ARGS['target']:-mediatek/filogic}"
-  local device="${PARSED_ARGS['device']:-bananapi_bpi-r4}"
-  local official_url="${PARSED_ARGS['official-url']:-$(_default_official_url "${firmware}")}"
+  # 缺省值来自 config/site.json：defaults.* 给设备 / target，firmwares[].downloads 给官方站根
+  local default_firmware default_version default_target default_device
+  default_firmware="$(config_value defaults.firmware)"
+  default_version="$(config_value defaults.version)"
+  default_target="$(config_value defaults.target)"
+  default_device="$(config_value defaults.device)"
+  local firmware="${PARSED_ARGS['firmware']:-${default_firmware:-openwrt}}"
+  local version="${PARSED_ARGS['version']:-${default_version:-snapshots}}"
+  local target="${PARSED_ARGS['target']:-${default_target:-mediatek/filogic}}"
+  local device="${PARSED_ARGS['device']:-${default_device:-bananapi_bpi-r4}}"
+  local official_url="${PARSED_ARGS['official-url']:-$(config_firmware_value "${firmware}" downloads)}"
+  if [[ -z "${official_url}" ]]; then
+    log ERROR "无法确定 ${firmware} 的官方站根（config/site.json 的 firmwares[].downloads 未声明）"
+    log ERROR "请用 --official-url=URL 指定"
+    exit 1
+  fi
   local version_dir
   version_dir="$(_version_dir "${version}")"
 

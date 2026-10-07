@@ -35,10 +35,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
+
+from site_versions import parse_version_key
 
 # 站内共享目录前缀：官方布局里 releases/packages-<major.minor> 是跨版本共享的包目录，
 # 不含 targets/，不属于"某个稳定版"，因此不参与计数也不删除。
@@ -47,25 +48,11 @@ SHARED_PACKAGE_PREFIX = "packages-"
 # site.json 未声明 keep_stable 时的内置默认值：当前稳定版 + 上一个稳定版
 DEFAULT_KEEP_STABLE = 2
 
-_VERSION_NUM_RE = re.compile(r"\d+")
-
 
 def log(message: str, quiet: bool = False) -> None:
     """打印一行日志（--quiet 时静默）。"""
     if not quiet:
         print(message)
-
-
-def parse_version_key(name: str) -> tuple[int, ...] | None:
-    """把目录名解析成可比较的版本号元组；不含数字时返回 None。
-
-    '25.12.10' → (25, 12, 10)，'24.10.3' → (24, 10, 3)，'v25.12' → (25, 12)。
-    逐段按整数比较，所以 25.12.10 大于 25.12.2（字符串比较会判反）。
-    """
-    parts = _VERSION_NUM_RE.findall(name)
-    if not parts:
-        return None
-    return tuple(int(part) for part in parts)
 
 
 def declared_versions(fw: dict) -> set[str]:

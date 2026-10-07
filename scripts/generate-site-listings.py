@@ -56,10 +56,6 @@ INDEX_NAME = "index.html"
 # 官方的 KB 显示格式：字节/1024，保留一位小数
 KB = 1024.0
 
-# 官方样式表：跨域引用官方那份（不复制文件 → 不构成再分发；沙箱/离线预览时样式会缺失，
-# 属预期）。必须与 generate-site-landing.py 的 OFFICIAL_CSS 保持一致。
-OFFICIAL_CSS = "https://downloads.immortalwrt.org/openwrt.css"
-
 # 生成列表页时要跳过的路径（相对 public 根的 POSIX 路径）。
 # 站点自身的资源（字体/CSS/JS/搜索索引）属于站点 chrome：既不为它生成列表页，
 # 也不在父目录的列表里出现——否则父目录会出现指向 404 的死链。
@@ -381,7 +377,7 @@ def plain_row(name: str, is_dir: bool, size: int, mtime: float) -> str:
 
 
 def render_page(public_dir: Path, rel_dir: str, entries: list[dict], hashes: dict[str, str],
-                image_names: list[str], readme_html: str | None) -> str:
+                image_names: list[str], readme_html: str | None, stylesheet: str = "") -> str:
     """渲染一个目录的 index.html（immortalwrt/dir-index.cgi 风格）。"""
     path_for_title = f"/{rel_dir}/" if rel_dir else "/"
     head = [
@@ -389,7 +385,8 @@ def render_page(public_dir: Path, rel_dir: str, entries: list[dict], hashes: dic
         "<html lang='en'>",
         "<head>",
         "<meta charset='utf-8'/>",
-        f"<link rel='stylesheet' href='{OFFICIAL_CSS}' />",
+        # 官方样式表来自配置（脚本里不写死任何发行版地址）；未配置就只用站点自身的
+        *([f"<link rel='stylesheet' href='{stylesheet}' />"] if stylesheet else []),
         f"<link rel='stylesheet' href='{asset_url(public_dir, 'assets/site/base.css')}' />",
         icon_tags(public_dir),
         # README 说明块才需要 highlight.js 主题与站点样式（含 base64 内联字体）
@@ -529,12 +526,14 @@ def collect_entries(directory: Path, rel_dir: str, skip_paths: tuple[str, ...]) 
 
 
 def generate_tree(public_dir: Path, dry_run: bool, quiet: bool,
-                  skip_paths: tuple[str, ...], landing_paths: tuple[str, ...]) -> int:
+                  skip_paths: tuple[str, ...], landing_paths: tuple[str, ...],
+                  stylesheet: str = "") -> int:
     """递归生成整棵树的目录列表页，返回生成的页面数。
 
     skip_paths:    完全不处理的子树（站点 chrome 等）
     landing_paths: 落地页路径（站点根与各发行版根）——本脚本不写这些目录的
                    index.html，避免覆盖落地页生成器的产物（两脚本曾因此互相覆盖）
+    stylesheet:    站点级样式表（来自 config/site.json；空表示只用站点自身的）
     """
     generated = 0
     for current, subdirs, _files in os.walk(public_dir):
@@ -565,7 +564,7 @@ def generate_tree(public_dir: Path, dry_run: bool, quiet: bool,
             except OSError:
                 readme_html = None
 
-        page = render_page(public_dir, rel, entries, hashes, image_names, readme_html)
+        page = render_page(public_dir, rel, entries, hashes, image_names, readme_html, stylesheet)
         target = directory / INDEX_NAME
         if not dry_run:
             target.write_text(page, encoding="utf-8")
@@ -576,7 +575,18 @@ def generate_tree(public_dir: Path, dry_run: bool, quiet: bool,
     return generated
 
 
-def resolve_landing_paths(explicit: str, config_path: Path) -> tuple[str, ...]:
+def load_site_config(config_path: Path) -> dict:
+    """读取站点配置；缺失或损坏时返回空表（列表页仍可生成，只是少站点级装饰）。"""
+    if not config_path.is_file():
+        return {}
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def resolve_landing_paths(explicit: str, config: dict) -> tuple[str, ...]:
     """解析「落地页路径」：站点根 + site.json 里声明的发行版根。
 
     这些目录的 index.html 由 generate-site-landing.py 负责，本脚本不得写入，
@@ -586,15 +596,9 @@ def resolve_landing_paths(explicit: str, config_path: Path) -> tuple[str, ...]:
         return tuple(p.strip().strip("/") for p in explicit.split(",") if p.strip())
 
     paths: list[str] = [""]  # 站点根
-    if config_path.is_file():
-        try:
-            data = json.loads(config_path.read_text(encoding="utf-8"))
-            for firmware in data.get("firmwares", []):
-                fid = firmware.get("id")
-                if fid:
-                    paths.append(str(fid))
-        except (OSError, json.JSONDecodeError):
-            pass
+    for firmware in config.get("firmwares", []):
+        if isinstance(firmware, dict) and firmware.get("id"):
+            paths.append(str(firmware["id"]))
     return tuple(paths)
 
 
@@ -621,12 +625,14 @@ def main() -> int:
         return 1
 
     skip_paths = tuple(p.strip().strip("/") for p in args.skip.split(",") if p.strip())
-    landing_paths = resolve_landing_paths(args.landing_paths, Path(args.config))
+    config = load_site_config(Path(args.config))
+    landing_paths = resolve_landing_paths(args.landing_paths, config)
+    stylesheet = str(config.get("stylesheet") or "")
 
     print(f"生成目录列表页: {public_dir}{'（dry-run）' if args.dry_run else ''}"
           f"（跳过: {', '.join(skip_paths) if skip_paths else '无'}"
           f"；落地页目录: {', '.join('/' + p + '/' for p in landing_paths)}）")
-    count = generate_tree(public_dir, args.dry_run, args.quiet, skip_paths, landing_paths)
+    count = generate_tree(public_dir, args.dry_run, args.quiet, skip_paths, landing_paths, stylesheet)
     print(f"完成: 共 {count} 个目录{'（未写入）' if args.dry_run else ''}")
     return 0
 
