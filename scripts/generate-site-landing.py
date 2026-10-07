@@ -3,12 +3,14 @@
 
 官方发布站首页是**手写** HTML（栏目：Stable Release / Old Stable Release /
 Development Snapshots / Release Archive）。本脚本按同样的栏目骨架生成我们自己的
-首页，差别只在于：内容由 `config/site.json` 驱动、双语内嵌、并在生成前校验所声明的
-版本在发布树里真实存在（避免出现指向不存在目录的死链）。
+首页，差别只在于：内容由 `config/site.json` 驱动、双语内嵌。
+
+本脚本只按声明渲染，不校验所声明的版本在发布树里是否存在（site.json 允许先于构建
+更新）。发布树的目录格式由 scripts/verify-site-structure.sh 在部署前守门。
 
 用法:
   ./generate-site-landing.py [--public-dir=public] [--config=config/site.json]
-                             [--allow-missing] [--quiet]
+                             [--quiet]
 
 生成物:
   <public-dir>/index.html         站点首页（双发行版）
@@ -136,34 +138,10 @@ def render_firmware_index(config: dict, fw: dict, public_dir: Path) -> str:
                       fw.get("title_en") or fw.get("title", fw["id"]), "\n".join(body))
 
 
-def validate(config: dict, public_dir: Path, allow_missing: bool) -> list[str]:
-    """校验声明的版本在发布树里真实存在，返回问题列表。"""
-    problems: list[str] = []
-    for fw in config.get("firmwares", []):
-        fid = fw["id"]
-        base = public_dir / fid
-        if not base.is_dir():
-            problems.append(f"发行版目录不存在: {base}")
-            continue
-        for key in ("stable", "oldstable"):
-            version = fw.get(key)
-            if version and not (base / "releases" / version / "targets").is_dir():
-                problems.append(f"{fid}: {key}={version} 在发布树中不存在（{base}/releases/{version}/targets）")
-        for version in fw.get("archive") or []:
-            if not (base / "releases" / version / "targets").is_dir():
-                problems.append(f"{fid}: archive 中声明的 {version} 不存在")
-        if fw.get("snapshots") and not (base / "snapshots" / "targets").is_dir():
-            problems.append(f"{fid}: 声明了 snapshots，但 {base}/snapshots/targets 不存在")
-    if problems and not allow_missing:
-        return problems
-    return []
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="生成站点落地页（中文默认、可切英文）")
     parser.add_argument("--public-dir", default="public", help="发布树根目录（默认 public）")
     parser.add_argument("--config", default="config/site.json", help="站点配置（默认 config/site.json）")
-    parser.add_argument("--allow-missing", action="store_true", help="版本缺失时只警告不失败（本地预览用）")
     parser.add_argument("--quiet", action="store_true", help="不打印细节")
     args = parser.parse_args()
 
@@ -177,12 +155,6 @@ def main() -> int:
         return 1
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    problems = validate(config, public_dir, args.allow_missing)
-    if problems:
-        print("错误: config/site.json 声明的版本与发布树不一致：", file=sys.stderr)
-        for problem in problems:
-            print(f"  - {problem}", file=sys.stderr)
-        return 1
 
     (public_dir / "index.html").write_text(render_index(config, public_dir), encoding="utf-8")
     if not args.quiet:

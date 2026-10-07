@@ -16,6 +16,9 @@
 #   4. 每个 targets/<target>/<subtarget> 含 profiles.json、sha256sums、*.buildinfo
 #   5. 不残留旧 SPA 资产（assets/web、*.index.json、items.json）
 #   6. 带 --require-listings 时，每个发布目录都要有生成的 index.html
+#   6b. 被跳过的路径（站点 chrome）里不得出现列表页
+#   7. 站点发布的公钥与仓库 public-key.pem 一致
+#   8. 站点根与各发行版根必须是落地页（发行版目录不存在时跳过）
 #
 # 体积只记录，不作为失败条件。
 #
@@ -339,6 +342,9 @@ _check_signing_key() {
 # generate-site-listings.py。若只跑了列表生成器、或执行顺序颠倒，落地页会被
 # 目录列表页覆盖（本次就发生过一次）。
 #
+# 只判"已存在目录的格式"：发行版目录不存在时跳过（site.json 允许先于构建更新，
+# 与断言 3 对缺失固件目录的口径一致），目录在却不是落地页仍然失败。
+#
 # Globals:
 #   PUBLIC_DIR
 #   FIRMWARES
@@ -346,6 +352,10 @@ _check_signing_key() {
 _check_landing_pages() {
   local dirs=("${PUBLIC_DIR}") fw
   for fw in "${FIRMWARES[@]}"; do
+    if [[ ! -d "${PUBLIC_DIR}/${fw}" ]]; then
+      _warn "发行版目录不存在，跳过落地页校验: ${PUBLIC_DIR}/${fw}"
+      continue
+    fi
     dirs+=("${PUBLIC_DIR}/${fw}")
   done
 
