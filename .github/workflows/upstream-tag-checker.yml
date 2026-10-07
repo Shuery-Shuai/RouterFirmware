@@ -1,0 +1,163 @@
+# =============================================================================
+# 工作流名称: Upstream Version Tag Checker
+# 描述: 定期检查 OpenWrt / ImmortalWrt 上游仓库是否发布了新的版本 Tag，
+#       对 config/site.json 声明的发行线（stable / oldstable）触发编译，
+#       使正式版固件随上游发版自动更新。
+#
+# 触发条件:
+#   schedule:
+#     - 每天 UTC 18:00 自动执行 (北京时间次日 02:00)
+#   workflow_dispatch:
+#     - 手动触发，可将 tag-update 设为 true 强制按最新 Tag 触发构建（忽略缓存）
+#
+# 跟踪规则:
+#   1. 发行线来自 config/site.json 中各固件声明的 stable / oldstable
+#      （取主次版本号，如 25.12.5 → 25.12）。新增发行线只需先在 site.json
+#      声明（可先于构建更新），下一次运行即自动编译该发行线的最新 Tag
+#   2. 每条发行线优先选择最新正式版 Tag（如 v25.12.6）；该发行线尚无
+#      正式版时回退到最新预发布版（rc/beta/alpha）
+#   3. 同一 Tag 由缓存去重（key: TAG-<固件>-<发行线>-<Tag>），只触发一次
+#      编译；首次启用时缓存为空，会为每条发行线补一次最新 Tag 的编译
+#
+# 所需 Secrets:
+#   ACTIONS_TRIGGER_PAT - 具有 repo 权限的 Personal Access Token，
+#                          用于跨工作流触发 repository_dispatch 事件
+# =============================================================================
+
+name: Upstream Version Tag Checker
+
+# ----------------------------- 全局环境变量 ----------------------------------
+env:
+  TZ: Asia/Shanghai # 设置时区，确保日志时间准确
+
+# ----------------------------- 触发事件配置 ----------------------------------
+on:
+  schedule:
+    # 每天 UTC 18:00 执行一次 (cron 使用 UTC 时间)
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      tag-update:
+        description: "强制按上游最新 Tag 触发构建 (设为 true 则忽略缓存)"
+        required: false
+        default: "false"
+
+# =============================================================================
+# Job: plan
+# 职责: 由 site.json 推导需要跟踪的「固件 + 发行线」矩阵，供 tag job 使用
+# =============================================================================
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5 # 本 job 仅做静态解析，耗时极短
+    permissions:
+      contents: read # 签出仓库读取 site.json
+      actions: write # 清理旧工作流运行记录
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 签出仓库，读取 config/site.json
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 生成跟踪矩阵
+      # 输出形如 [{"firmware":"openwrt","repo":"...","line":"25.12","title":"OpenWrt"}]
+      # 无跟踪目标时输出 []，tag job 会据此跳过
+      # -----------------------------------------------------------------------
+      - name: 生成跟踪矩阵
+        id: plan
+        run: |
+          matrix="$(bash "${GITHUB_WORKSPACE}/scripts/upstream-tag.sh" plan)"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 清理过旧的工作流运行记录，保持仓库整洁
+      # 清理失败不应阻断后续的 Tag 检查，故标记 continue-on-error
+      # -----------------------------------------------------------------------
+      - name: 清理旧工作流运行
+        if: always() # 无论前面步骤成功与否都执行
+        continue-on-error: true
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 7
+          keep_minimum_runs: 7
+
+  # ===========================================================================
+  # Job: tag
+  # 职责: 按发行线并发检查上游最新 Tag，触发 Router Firmware Builder 编译
+  # ===========================================================================
+  tag:
+    runs-on: ubuntu-latest
+    needs: plan
+    # 没有跟踪目标时矩阵为空，直接跳过（空矩阵会导致 job 报错）
+    if: needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]'
+    timeout-minutes: 15 # 仅查询标签与缓存，不涉及编译
+    permissions:
+      contents: read # 签出仓库以调用检查脚本
+    strategy:
+      fail-fast: false # 某条发行线失败不影响其他发行线
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    concurrency:
+      # 同一发行线的多次检查排队执行，避免重复触发
+      group: ${{ github.workflow }}-${{ matrix.firmware }}-${{ matrix.line }}
+      cancel-in-progress: false
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 步骤 1: 签出仓库（调用 scripts/upstream-tag.sh）
+      # -----------------------------------------------------------------------
+      - name: 签出仓库
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 步骤 2: 查询该发行线上的最新版本 Tag
+      # 该发行线暂无 Tag 时输出为空，后续步骤自动跳过
+      # -----------------------------------------------------------------------
+      - name: 查询上游最新版本 Tag
+        id: getTag
+        run: |
+          tag="$(bash "${GITHUB_WORKSPACE}/scripts/upstream-tag.sh" select \
+            --firmware="${{ matrix.firmware }}" \
+            --line="${{ matrix.line }}")"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${tag}" ]]; then
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 步骤 3: 用缓存判断该 Tag 是否已触发过编译
+      # 缓存未命中说明是新版本，需要触发构建
+      # -----------------------------------------------------------------------
+      - name: 比较 Tag 缓存
+        id: cacheTag
+        if: steps.getTag.outputs.tag != ''
+        uses: actions/cache@v5
+        with:
+          path: .tag-marker # 缓存一个标记文件，内容为已触发的 Tag
+          key: TAG-${{ matrix.firmware }}-${{ matrix.line }}-${{ steps.getTag.outputs.tag }}
+
+      # -----------------------------------------------------------------------
+      # 步骤 4: 记录新 Tag，供下次运行命中缓存
+      # -----------------------------------------------------------------------
+      - name: 记录 Tag 标记
+        if: steps.getTag.outputs.tag != '' && steps.cacheTag.outputs.cache-hit != 'true'
+        run: echo "${{ steps.getTag.outputs.tag }}" > .tag-marker
+
+      # -----------------------------------------------------------------------
+      # 步骤 5: 触发 Router Firmware Builder 编译该 Tag 对应的版本
+      # 条件: 有新 Tag (缓存未命中) 或手动强制更新 (tag-update == 'true')
+      # -----------------------------------------------------------------------
+      - name: 触发版本编译
+        if: >-
+          steps.getTag.outputs.tag != '' &&
+          (steps.cacheTag.outputs.cache-hit != 'true' || github.event.inputs.tag-update == 'true')
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: ${{ matrix.title }} Version Tag
+          client-payload: '{"firmware": "${{ matrix.firmware }}", "version": "${{ steps.getTag.outputs.version }}", "profile": "bananapi_bpi-r4"}'

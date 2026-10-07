@@ -26,6 +26,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **copy-bin-files.sh** - 复制编译产物（支持 snapshots 和 releases 目录结构）
 - **public-compressor.sh** - 将 public 目录打包为 zip 压缩包
 - **public-uploader.sh** - 上传 zip 包到 GitHub Release 并返回直链，支持 Token / gh CLI 认证
+- **upstream-tag.sh** - 上游版本 Tag 检查（输出跟踪矩阵与发行线最新 Tag）
 - **verify-site-structure.sh** - 发布前校验站点目录结构（守门）
 
 ## 使用方式
@@ -274,6 +275,31 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ```
 
 功能：将打包好的 zip 上传到 GitHub Release，输出可直接用于手动部署工作流的直链下载地址。支持交互式选择认证方式（Token 或 gh CLI），自动创建 Release 时生成包含文件大小、修改时间等详细信息的 Markdown 描述。
+
+#### upstream-tag.sh
+
+```bash
+./upstream-tag.sh plan [--config=PATH]
+./upstream-tag.sh select --firmware=FW --line=LINE
+./upstream-tag.sh --help
+```
+
+示例：
+
+```bash
+# 输出跟踪矩阵（供 GitHub Actions matrix 使用）
+./upstream-tag.sh plan
+
+# 输出 25.12 发行线上最新的正式版 Tag
+./upstream-tag.sh select --firmware=openwrt --line=25.12
+```
+
+功能：读取 `config/site.json` 声明的 `stable` / `oldstable` 发行线，通过 `git ls-remote` 查询上游版本 Tag，供 `upstream-tag-checker.yml` 判断是否需要触发正式版编译。
+
+- `plan`：输出单行 JSON 数组（matrix include 列表），无跟踪目标时输出 `[]`
+- `select`：输出发行线上最新的正式版 Tag（如 `v25.12.6`）；该发行线尚无正式版时回退到最新预发布版（`rc` / `beta` / `alpha`），无 Tag 时输出为空
+- 是否已经编译过由调用方（工作流缓存）判断，脚本不维护基线；新增发行线只需在 `site.json` 中声明
+- 日志一律写入 stderr，stdout 只输出结果，便于工作流捕获
 
 ## 编译产物目录结构
 

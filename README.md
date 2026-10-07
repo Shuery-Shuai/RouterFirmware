@@ -29,11 +29,21 @@
 
 ### 主要工作流
 
-| 工作流文件名                     | 用途                                               | 触发方式                                                                                                                                            |
-| -------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rtfw-builder.yml`               | 编译固件并部署到 GitHub Pages                      | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
-| `immortalwrt-update-checker.yml` | 每 3 天检查 ImmortalWrt 上游源码更新，自动触发编译 | ① 定时触发（UTC 16:00）<br>② 手动强制触发                                                                                                           |
-| `openwrt-update-checker.yml`     | 每周五检查 OpenWrt 上游源码更新，自动触发编译      | ① 定时触发（UTC 2:00）<br>② 手动强制触发                                                                                                            |
+| 工作流文件名                     | 用途                                                   | 触发方式                                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rtfw-builder.yml`               | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
+| `immortalwrt-update-checker.yml` | 每 3 天检查 ImmortalWrt 上游源码更新，自动触发编译     | ① 定时触发（UTC 16:00）<br>② 手动强制触发                                                                                                           |
+| `openwrt-update-checker.yml`     | 每周五检查 OpenWrt 上游源码更新，自动触发编译          | ① 定时触发（UTC 2:00）<br>② 手动强制触发                                                                                                            |
+| `upstream-tag-checker.yml`       | 每天检查上游版本 Tag，自动编译 stable/oldstable 发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
+
+### 版本 Tag 跟踪
+
+`upstream-tag-checker.yml` 每天检查上游仓库的版本标签，让正式版固件随上游发版自动编译：
+
+- **跟踪范围**：`config/site.json` 中每个固件声明的 `stable` / `oldstable` 发行线（取主次版本号，如 `25.12.5` → `25.12`）；新增发行线只需先在 `site.json` 声明
+- **版本选择**：每条发行线取最新正式版 Tag（如 `v25.12.6`）；该发行线尚无正式版时，回退到最新预发布版（`rc` / `beta` / `alpha`）
+- **触发去重**：同一 Tag 只触发一次编译（由工作流缓存记录）；手动触发时把 `tag-update` 设为 `true` 可强制重新编译最新 Tag
+- **首次启用**：缓存为空，会为每条发行线补一次当前最新 Tag 的编译（基线回填），此后仅随新 Tag 触发
 
 ### 编译流程亮点
 
@@ -545,7 +555,8 @@ RouterFirmware/
 ├── .github/workflows/              # GitHub Actions 工作流
 │   ├── rtfw-builder.yml            # 固件构建与部署
 │   ├── immortalwrt-update-checker.yml # ImmortalWrt 更新检测
-│   └── openwrt-update-checker.yml  # OpenWrt 更新检测
+│   ├── openwrt-update-checker.yml  # OpenWrt 更新检测
+│   └── upstream-tag-checker.yml    # 上游版本 Tag 检测（正式版自动编译）
 ├── scripts/                        # 构建脚本（含详细注释）
 │   ├── make.sh                     # 主构建脚本
 │   ├── common.sh                   # 通用函数库
@@ -555,6 +566,7 @@ RouterFirmware/
 │   ├── copy-pre-files.sh           # 复制编译前文件
 │   ├── build.sh                    # 执行编译
 │   ├── copy-bin-files.sh           # 复制编译产物
+│   ├── upstream-tag.sh             # 上游版本 Tag 检查
 │   └── verify-site-structure.sh    # 发布前校验站点目录结构
 ├── public/                         # 公共资源
 │   ├── assets/                     # 设备配置与脚本资源
