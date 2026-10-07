@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
 #######################################
-# 站点目录结构校验（发布前守门）
+# 站点目录结构校验与清理（发布前守门）
 #
-# 在部署到 GitHub Pages 之前检查 public/ 的目录结构，任何一条断言失败都以
-# 非零码退出，避免把结构损坏的站点发出去。
+# 在部署到 GitHub Pages 之前检查 public/ 的目录结构，避免把结构损坏的站点发出去。
+#
+# 两类问题分开处理：
+#   多余 —— 不属于站点声明的内容（嵌套 public/、白名单之外的顶层条目、旧 SPA 资产、
+#     被跳过路径里的列表页）：--prune 模式直接删除（优先删除，不让部署失败）；
+#     校验模式只告警，提示该跑 --prune。
+#   缺失 —— 发布必需的内容（公钥、targets/packages、元数据文件、列表页、落地页）：
+#     一律断言失败，绝不"修复"，缺失发出去就是坏站点。
 #
 # 历史事故：public.zip 打包时带上了顶层 public/，部署流程又解包到 public/，
 # 于是线上出现 public/public/** 的整站副本，站点体积凭空翻倍（且这些文件
-# 全部可被 HTTP 访问）。
+# 全部可被 HTTP 访问）。这类多余内容现在由 --prune 删除，同时告警。
 #
 # 断言:
-#   1. 不存在嵌套的 public/ 目录
-#   2. 顶层条目只允许白名单内的名字
-#   3. {firmware}/snapshots 与 {firmware}/releases/<version> 同时含 targets 与 packages
-#   4. 每个 targets/<target>/<subtarget> 含 profiles.json、sha256sums、*.buildinfo
-#   5. 不残留旧 SPA 资产（assets/web、*.index.json、items.json）
-#   6. 带 --require-listings 时，每个发布目录都要有生成的 index.html
-#   6b. 被跳过的路径（站点 chrome）里不得出现列表页
-#   7. 站点发布的公钥与仓库 public-key.pem 一致
-#   8. 站点根与各发行版根必须是落地页（发行版目录不存在时跳过）
+#   1. 不存在嵌套的 public/ 目录                                （多余）
+#   2. 顶层条目只允许白名单内的名字（含 site.json 的固件）        （多余）
+#   3. {firmware}/snapshots 与 {firmware}/releases/<version> 同时含 targets 与 packages（缺失）
+#   4. 每个 targets/<target>/<subtarget> 含 profiles.json、sha256sums、*.buildinfo（缺失）
+#   5. 不残留旧 SPA 资产（assets/web、*.index.json、items.json）  （多余）
+#   6. 带 --require-listings 时，每个发布目录都要有生成的 index.html（缺失）
+#   6b. 被跳过的路径（站点 chrome）里不得出现列表页               （多余）
+#   7. 站点发布的公钥与仓库 public-key.pem 一致                  （缺失）
+#   8. 站点根与各发行版根必须是落地页（发行版目录不存在时跳过）    （缺失）
 #
 # 体积只记录，不作为失败条件。
 #
@@ -26,14 +32,18 @@
 #   ./verify-site-structure.sh [options]
 #
 # 选项:
-#   --public-dir=DIR        待校验目录 (默认: public)
-#   --firmwares=a,b         固件目录名 (默认: immortalwrt,openwrt)
+#   --public-dir=DIR        待校验/清理目录 (默认: public)
+#   --config=FILE           站点配置，用于确定固件名单 (默认: config/site.json)
+#   --firmwares=a,b         固件目录名（覆盖 site.json 里的清单）
 #   --require-listings      要求每个发布目录都存在 index.html
+#   --prune                 删除多余内容（只清理，不校验缺失项）
 #   -h, --help              显示此帮助信息
 #
 # 退出状态:
 #   0 - 全部断言通过（允许有警告）
-#   1 - 至少一条断言失败
+#   1 - 至少一条断言失败，或清理目标越出 PUBLIC_DIR 边界
+#
+# 安全边界：拒绝在 / 与仓库根目录上执行；每次删除前校验目标位于 PUBLIC_DIR 内。
 #
 # 作者: Shuery-Shuai
 # 版本: 1.0.0
@@ -47,16 +57,29 @@ readonly SCRIPT_DIR
 # shellcheck source=common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-readonly DEFAULT_FIRMWARES="immortalwrt,openwrt"
+readonly DEFAULT_SITE_CONFIG="config/site.json"
 
 # 生成列表页时必须跳过的路径（相对 public 根）——与
 # scripts/generate-site-listings.py 的 DEFAULT_SKIP_PATHS 保持一致：
 # 站点自身资源（字体/CSS/JS/搜索索引）属于站点 chrome，不作为可下载内容列出。
 readonly SKIP_LISTING_PATHS=("assets/site")
 
+# 本脚本的布尔开关：让 parse_args 把它们当标志处理（不消费后一个参数）
+BOOLEAN_OPTIONS+=(prune require-listings)
+
 # 校验结果收集（一次跑完所有断言，而不是碰到第一个错就退出）
 FAILURES=()
 WARNINGS=()
+
+# 清理模式开关与清理记录
+PRUNE="false"
+PRUNED=()
+
+# PUBLIC_DIR 的物理绝对路径：清理边界校验的基准
+PUBLIC_DIR_ABS=""
+
+# 固件目录名单（来自 --firmwares 或 site.json）
+FIRMWARES=()
 
 #######################################
 # 记录一条失败断言
@@ -101,25 +124,159 @@ _in_list() {
 }
 
 #######################################
-# 断言 1: 不得存在嵌套的 public/ 目录
+# 判断名字能否安全用作路径片段
 #
-# Globals:
-#   PUBLIC_DIR
+# 固件名会拼进 ${PUBLIC_DIR}/<name> 并参与清理边界判断，因此必须是纯名字。
+#
+# Arguments:
+#   $1 - 待校验的名字
+#
+# Returns:
+#   0 - 安全; 1 - 为空、含路径字符，或为 . / ..
 #######################################
-_check_no_nested_public() {
-  if [[ -d "${PUBLIC_DIR}/public" ]]; then
-    _fail "存在嵌套目录 ${PUBLIC_DIR}/public —— 压缩包层级错误，会造成整站副本"
-  fi
+_is_safe_name() {
+  local name="$1"
+  [[ -n "${name}" && "${name}" != "." && "${name}" != ".." ]] || return 1
+  [[ "${name}" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
 #######################################
-# 断言 2: 顶层条目白名单
+# 读取 site.json 里声明的固件 id
+#
+# Arguments:
+#   $1 - 站点配置路径
+#
+# Outputs:
+#   每行一个固件 id 到 stdout
+#
+# Returns:
+#   0 - 解析成功; 1 - 缺 python3 或配置解析失败
+#######################################
+_site_config_ids() {
+  local config="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    log ERROR "解析站点配置需要 python3，但未找到"
+    return 1
+  fi
+  python3 - "${config}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    data = json.load(fh)
+for firmware in data.get("firmwares") or []:
+    firmware_id = (firmware or {}).get("id")
+    if firmware_id:
+        print(firmware_id)
+PY
+}
+
+#######################################
+# 确定固件目录名单
+#
+# 站点发布哪些固件由 --firmwares 或 config/site.json 决定：site.json 是站点内容的
+# 唯一声明来源，顶层白名单与"多余内容"清理都基于这份名单。
+#
+# Arguments:
+#   $1 - --firmwares 的原始取值（可为空）
+#   $2 - 站点配置路径
+#
+# Globals:
+#   FIRMWARES
+#######################################
+_load_firmwares() {
+  local explicit="$1" config="$2"
+  local -a names=()
+  local ids line
+
+  if [[ -n "${explicit}" ]]; then
+    IFS=',' read -r -a names <<<"${explicit// /}"
+    log INFO "固件名单来自 --firmwares: ${names[*]}"
+  else
+    require_file "${config}" "站点配置不存在，无法确定固件名单（可用 --firmwares 覆盖）"
+    if ! ids="$(_site_config_ids "${config}")"; then
+      log FATAL "站点配置解析失败: ${config}"
+      exit 1
+    fi
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] && names+=("${line}")
+    done <<<"${ids}"
+    if ((${#names[@]} == 0)); then
+      log FATAL "${config} 里没有声明任何 firmwares[].id"
+      exit 1
+    fi
+    log INFO "固件名单来自 ${config}: ${names[*]}"
+  fi
+
+  for line in "${names[@]}"; do
+    if ! _is_safe_name "${line}"; then
+      log FATAL "固件名不能作为目录名使用: '${line}'（只允许字母、数字、. _ -）"
+      exit 1
+    fi
+  done
+  FIRMWARES=("${names[@]}")
+}
+
+#######################################
+# 处理一条"多余内容"
+#
+# --prune 模式删除该路径；校验模式只告警。删除前校验目标必须位于 PUBLIC_DIR 内，
+# 越界一律记为失败并拒绝删除。
+#
+# Arguments:
+#   $1 - 目标路径（绝对路径）
+#   $2 - 原因描述
+#
+# Globals:
+#   PUBLIC_DIR_ABS
+#   PRUNE
+#   PRUNED
+#######################################
+_prune() {
+  local target="$1" reason="$2"
+
+  # 用 -e 或 -L 判定：断掉的符号链接也属于多余内容，必须能删掉
+  [[ -e "${target}" || -L "${target}" ]] || return 0
+
+  if [[ "${target}" != "${PUBLIC_DIR_ABS}/"* ]]; then
+    _fail "拒绝处理 PUBLIC_DIR 之外的路径: ${target}（${reason}）"
+    return 1
+  fi
+
+  if [[ "${PRUNE}" != "true" ]]; then
+    _warn "存在多余内容（--prune 会删除）: ${target}（${reason}）"
+    return 0
+  fi
+
+  rm -rf -- "${target}"
+  PRUNED+=("${target}（${reason}）")
+  log WARN "已清理多余内容: ${target}（${reason}）"
+}
+
+#######################################
+# 处理四类多余内容
+#
+# 与"缺失"类断言分开：这里的问题都能靠删除解决，删不掉才算失败。
+#
+# Globals:
+#   PUBLIC_DIR_ABS
+#######################################
+_prune_extras() {
+  _prune "${PUBLIC_DIR_ABS}/public" "嵌套 public/——压缩包层级错误，会造成整站副本"
+  _prune_top_level
+  _prune_legacy_spa
+  _prune_skipped_listings
+}
+
+#######################################
+# 断言 2: 顶层条目白名单（白名单之外的条目属于多余内容）
 #
 # Globals:
 #   PUBLIC_DIR
+#   PUBLIC_DIR_ABS
 #   FIRMWARES
 #######################################
-_check_top_level() {
+_prune_top_level() {
   shopt -s nullglob
   # favicon.ico / favicon.svg / apple-touch-icon.png 由 scripts/build-site-icon.py 生成并随仓库提交：
   # 浏览器对 /favicon.ico 是"无 link 也请求"，所以三个文件必须待在站点根，不能挪进 assets/。
@@ -129,7 +286,7 @@ _check_top_level() {
   for entry in "${PUBLIC_DIR}"/* "${PUBLIC_DIR}"/.[!.]*; do
     name="$(basename "${entry}")"
     if ! _in_list "${name}" "${allowed[@]}"; then
-      _fail "顶层出现白名单之外的条目: ${name}"
+      _prune "${PUBLIC_DIR_ABS}/${name}" "顶层白名单之外的条目"
     fi
   done
   shopt -u nullglob
@@ -229,21 +386,23 @@ _check_target_metadata() {
 }
 
 #######################################
-# 断言 5: 不得残留旧 SPA 资产
+# 断言 5: 旧 SPA 资产属于多余内容（assets/web、*.index.json、items.json）
 #
 # Globals:
-#   PUBLIC_DIR
+#   PUBLIC_DIR_ABS
 #######################################
-_check_no_legacy_spa() {
-  if [[ -d "${PUBLIC_DIR}/assets/web" ]]; then
-    _fail "残留旧 SPA 目录 ${PUBLIC_DIR}/assets/web"
-  fi
+_prune_legacy_spa() {
+  _prune "${PUBLIC_DIR_ABS}/assets/web" "旧 SPA 资产目录"
 
-  local leftovers
-  leftovers="$(find "${PUBLIC_DIR}" \( -name '.index.json' -o -name 'items.json' \) 2>/dev/null | head -5)"
-  if [[ -n "${leftovers}" ]]; then
-    _fail "残留旧索引文件: $(echo "${leftovers}" | tr '\n' ' ')"
-  fi
+  local leftovers=() path
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] && leftovers+=("${path}")
+  done < <(find "${PUBLIC_DIR_ABS}" \( -name '.index.json' -o -name 'items.json' \) 2>/dev/null)
+
+  ((${#leftovers[@]} == 0)) && return 0
+  for path in "${leftovers[@]}"; do
+    _prune "${path}" "旧索引文件"
+  done
 }
 
 #######################################
@@ -286,23 +445,22 @@ _check_listings() {
 }
 
 #######################################
-# 断言 6b: 被跳过的路径里不得出现列表页
+# 断言 6b: 被跳过的路径里出现列表页说明生成器跳过规则失效——列表页属于多余内容
 #
 # 站点 chrome（如 assets/site/**）不应被当成可下载内容：生成器必须跳过它。
-# 这里反向断言——一旦发现其中存在 index.html，说明跳过规则失效。
 #
 # Globals:
-#   PUBLIC_DIR
+#   PUBLIC_DIR_ABS
 #   SKIP_LISTING_PATHS
 #######################################
-_check_skipped_paths() {
+_prune_skipped_listings() {
   local rel found
   for rel in "${SKIP_LISTING_PATHS[@]}"; do
-    [[ -d "${PUBLIC_DIR}/${rel}" ]] || continue
-    found="$(find "${PUBLIC_DIR}/${rel}" -name 'index.html' 2>/dev/null | head -3)"
-    if [[ -n "${found}" ]]; then
-      _fail "被跳过的路径 ${rel}/ 中出现了列表页（生成器跳过规则失效）: $(echo "${found}" | tr '\n' ' ')"
-    fi
+    [[ -d "${PUBLIC_DIR_ABS}/${rel}" ]] || continue
+    while IFS= read -r found; do
+      [[ -n "${found}" ]] || continue
+      _prune "${found}" "被跳过路径（站点 chrome）里的列表页——生成器跳过规则失效"
+    done < <(find "${PUBLIC_DIR_ABS}/${rel}" -name 'index.html' 2>/dev/null)
   done
 }
 
@@ -373,24 +531,32 @@ _check_landing_pages() {
 }
 
 #######################################
-# 记录站点体积（仅信息，不作为失败条件）
+# 记录站点体积与清理结果（仅信息，不作为失败条件）
 #
 # Globals:
 #   PUBLIC_DIR
+#   PRUNED
 #######################################
 _report_volume() {
   local kb mb
   kb="$(du -sk "${PUBLIC_DIR}" 2>/dev/null | awk '{print $1}')"
   mb=$((kb / 1024))
   log INFO "站点体积: ${mb} MB（GitHub Pages 上限 1024 MB，仅记录不判定）"
+  log INFO "清理条目: ${#PRUNED[@]}"
 
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       echo "### 站点结构校验"
       echo ""
       echo "- 站点体积: ${mb} MB / 1024 MB"
+      echo "- 清理条目: ${#PRUNED[@]}"
       echo "- 失败断言: ${#FAILURES[@]}"
       echo "- 警告: ${#WARNINGS[@]}"
+      if ((${#PRUNED[@]} > 0)); then
+        echo ""
+        echo "已清理："
+        printf -- '- %s\n' "${PRUNED[@]:0:20}"
+      fi
     } >>"${GITHUB_STEP_SUMMARY}"
   fi
 }
@@ -407,30 +573,58 @@ main() {
 
   if [[ -n "${PARSED_ARGS['h']:-}" || -n "${PARSED_ARGS['help']:-}" ]]; then
     show_help "verify-site-structure.sh" \
-      "校验站点目录结构（发布前守门）" \
+      "校验站点目录结构并清理多余内容（发布前守门）" \
       "[options]" \
       "  -h, --help              显示此帮助信息" \
-      "  --public-dir=DIR        待校验目录 (默认: public)" \
-      "  --firmwares=a,b         固件目录名 (默认: immortalwrt,openwrt)" \
-      "  --require-listings      要求每个发布目录都存在 index.html"
+      "  --public-dir=DIR        待校验/清理目录 (默认: public)" \
+      "  --config=FILE           站点配置，用于确定固件名单 (默认: config/site.json)" \
+      "  --firmwares=a,b         固件目录名（覆盖 site.json 里的清单）" \
+      "  --require-listings      要求每个发布目录都存在 index.html" \
+      "  --prune                 删除多余内容（只清理，不校验缺失项）"
     exit 0
   fi
 
   PUBLIC_DIR="${PARSED_ARGS['public-dir']:-public}"
   readonly PUBLIC_DIR
   local require_listings="${PARSED_ARGS['require-listings']:-false}"
-
-  IFS=',' read -r -a FIRMWARES <<<"${PARSED_ARGS['firmwares']:-${DEFAULT_FIRMWARES}}"
+  local config="${PARSED_ARGS['config']:-${DEFAULT_SITE_CONFIG}}"
+  PRUNE="${PARSED_ARGS['prune']:-false}"
 
   cd "${SCRIPT_DIR}/.."
   require_dir "${PUBLIC_DIR}" "待校验目录不存在"
 
-  log INFO "开始校验站点结构: ${PUBLIC_DIR} （固件: ${FIRMWARES[*]}）"
+  PUBLIC_DIR_ABS="$(cd "${PUBLIC_DIR}" && pwd -P)"
 
-  _check_no_nested_public
-  _check_top_level
-  _check_no_legacy_spa
-  _check_skipped_paths
+  # 清理安全边界：绝不在 / 或仓库根目录上动手（--public-dir=. 会把仓库文件当多余内容删掉）
+  local repo_root
+  repo_root="$(pwd -P)"
+  if [[ "${PUBLIC_DIR_ABS}" == "/" || "${PUBLIC_DIR_ABS}" == "${repo_root}" ]]; then
+    log FATAL "拒绝在 ${PUBLIC_DIR_ABS} 上执行（根目录或仓库根目录）"
+    exit 1
+  fi
+
+  _load_firmwares "${PARSED_ARGS['firmwares']:-}" "${config}"
+
+  if [[ "${PRUNE}" == "true" ]]; then
+    log INFO "开始清理站点多余内容: ${PUBLIC_DIR} （固件: ${FIRMWARES[*]}）"
+  else
+    log INFO "开始校验站点结构: ${PUBLIC_DIR} （固件: ${FIRMWARES[*]}）"
+  fi
+
+  # 多余内容：--prune 删除，校验模式只告警
+  _prune_extras
+
+  if [[ "${PRUNE}" == "true" ]]; then
+    _report_volume
+    if ((${#FAILURES[@]} > 0)); then
+      log FATAL "多余内容清理失败: ${#FAILURES[@]} 条错误"
+      exit 1
+    fi
+    log SUCCESS "多余内容清理完成（删除 ${#PRUNED[@]} 项）"
+    exit 0
+  fi
+
+  # 缺失内容：一律失败（删不出来，也不该"修复"）
   _check_signing_key
   _check_landing_pages
 
