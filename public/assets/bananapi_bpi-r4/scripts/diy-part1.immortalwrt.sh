@@ -66,6 +66,12 @@ clone_repo 'https://github.com/Shuery-Shuai/LuciFanXpert' \
     '--depth=1' \
     'custom-packages/LuciFanXpert'
 
+# 系统更新检测应用（目录名即包名：create_symlinks 以目录基名作为链接名）
+clone_repo 'https://github.com/Shuery-Shuai/LuciSysUpgrade' \
+    'main' \
+    '--depth=1' \
+    'custom-packages/luci-app-sysupgrade'
+
 clone_repo 'https://github.com/vernesong/OpenClash' \
     'dev' \
     '--depth=1' \

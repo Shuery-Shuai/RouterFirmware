@@ -211,6 +211,7 @@
 | luci-app-easyupdate | 系统简易更新工具             | ✅        | ✅      |
 | luci-app-fancontrol | 简易风扇控制界面             | ✅        | ✅      |
 | luci-app-fanxpert   | 风扇智能控制（温度曲线调节） | ✅        | ✅      |
+| luci-app-sysupgrade | 系统更新检测                 | ✅        | ✅      |
 
 #### OpenWrt 网络应用
 
@@ -241,6 +242,7 @@
 | luci-app-easyupdate | 系统简易更新工具             | ✅        | ✅          |
 | luci-app-fancontrol | 简易风扇控制界面             | ✅        | ✅          |
 | luci-app-fanxpert   | 风扇智能控制（温度曲线调节） | ✅        | ✅          |
+| luci-app-sysupgrade | 系统更新检测                 | ✅        | ✅          |
 | fan2go              | 风扇智能控制守护进程         | ✅        | ✅          |
 
 #### ImmortalWrt 网络应用
@@ -568,7 +570,9 @@ RouterFirmware/
 │   └── private-key.pem             # 私钥本地副本（已被 .gitignore 忽略）
 ├── sources/                        # 源码目录（构建时生成）
 │   ├── immortalwrt/                # ImmortalWrt 源码
+│   │   └── custom-packages/        # 构建时克隆的第三方包（由 diy-part1 填充）
 │   └── openwrt/                    # OpenWrt 源码
+│       └── custom-packages/        # 同上
 ├── docker-compose.yml              # Docker 构建环境
 ├── .devcontainer/                  # VS Code Dev Container 配置
 └── README.md                       # 本文件
