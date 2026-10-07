@@ -45,6 +45,18 @@
 - **触发去重**：同一 Tag 只触发一次编译（由工作流缓存记录）；手动触发时把 `tag-update` 设为 `true` 可强制重新编译最新 Tag
 - **首次启用**：缓存为空，会为每条发行线补一次当前最新 Tag 的编译（基线回填），此后仅随新 Tag 触发
 
+### 稳定版保留策略
+
+正式版编译会让发布树不断累积版本目录（每个版本上百 MB，而 GitHub Pages 单站上限 1 GB），因此站点按数量裁剪历史稳定版：
+
+- **保留数量**：`config/site.json` 的 `keep_stable` 决定留几个（可被固件条目里的同名字段覆盖）
+  - `keep_stable: 2`（当前值）：每个固件只留版本号最新的 2 个稳定版目录
+  - `keep_stable: 0`：不裁剪，保留全部历史版本；缺省时用内置默认值 2
+- **声明即钉住**：`site.json` 里 `stable` / `oldstable` / `archive` 声明过的版本，即使排在保留数量之外也不删除，避免手工归档的版本被下一次构建删掉
+- **绝不触碰**：`snapshots/`（开发快照）、`releases/packages-*`（官方共享包目录）、目录名里没有版本号的目录、符号链接
+- **执行时机**：构建任务在 `public/` 组装完成后裁一次（上传的产物不再累积旧版本），部署任务在生成页面前再裁一次（对 `upload-archive` 上传的包同样生效）；两次都用 `--protect` 钉住本次正在编译的版本
+- **本地预演**：`python3 scripts/prune-releases.py --dry-run` 只打印将要删除的目录，不落盘
+
 ### 编译流程亮点
 
 - **智能参数解析**：同时支持手动输入、外部 API 调用和默认值
@@ -567,7 +579,9 @@ RouterFirmware/
 │   ├── build.sh                    # 执行编译
 │   ├── copy-bin-files.sh           # 复制编译产物
 │   ├── upstream-tag.sh             # 上游版本 Tag 检查
-│   └── verify-site-structure.sh    # 发布前校验站点目录结构
+│   ├── prune-releases.py           # 按保留数量裁剪历史稳定版
+│   ├── verify-site-structure.sh    # 发布前校验站点目录结构
+│   └── tests/                      # 脚本回归测试（prune-releases-test.sh）
 ├── public/                         # 公共资源
 │   ├── assets/                     # 设备配置与脚本资源
 │   │   ├── bananapi_bpi-r4/        # BPI-R4 专属配置

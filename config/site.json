@@ -2,6 +2,7 @@
   "title": "RouterFirmware 固件下载",
   "description": "Banana Pi BPI-R4 的 OpenWrt / ImmortalWrt 构建产物与软件包仓库。",
   "description_en": "Build artifacts and package repositories for Banana Pi BPI-R4 (OpenWrt / ImmortalWrt).",
+  "keep_stable": 2,
   "firmwares": [
     {
       "id": "immortalwrt",

@@ -27,6 +27,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **public-compressor.sh** - 将 public 目录打包为 zip 压缩包
 - **public-uploader.sh** - 上传 zip 包到 GitHub Release 并返回直链，支持 Token / gh CLI 认证
 - **upstream-tag.sh** - 上游版本 Tag 检查（输出跟踪矩阵与发行线最新 Tag）
+- **prune-releases.py** - 按 keep_stable 裁剪发布树中的历史稳定版（保留最近 N 个）
 - **verify-site-structure.sh** - 发布前校验站点目录结构（守门）
 
 ## 使用方式
@@ -300,6 +301,34 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - `select`：输出发行线上最新的正式版 Tag（如 `v25.12.6`）；该发行线尚无正式版时回退到最新预发布版（`rc` / `beta` / `alpha`），无 Tag 时输出为空
 - 是否已经编译过由调用方（工作流缓存）判断，脚本不维护基线；新增发行线只需在 `site.json` 中声明
 - 日志一律写入 stderr，stdout 只输出结果，便于工作流捕获
+
+#### prune-releases.py
+
+```bash
+./prune-releases.py [--public-dir=public] [--config=config/site.json]
+                    [--keep=N] [--protect=25.12.5,24.10.3] [--dry-run] [--quiet]
+```
+
+示例：
+
+```bash
+# 预演：只打印将要删除的目录
+./prune-releases.py --dry-run
+
+# 按 site.json 的 keep_stable 裁剪（CI 里就是这一条）
+./prune-releases.py --public-dir=public --config=config/site.json --protect=25.12.5
+
+# 临时覆盖保留数量
+./prune-releases.py --keep=1
+```
+
+功能：删除 `public/<固件>/releases/<版本>/` 中超出保留数量的稳定版目录（**真的删除整棵目录**，CI 用它控制发布树体积）。
+
+- 保留数量取自 `config/site.json`：固件条目的 `keep_stable` 覆盖站点级同名设定，`--keep` 再覆盖两者；`0` 表示不裁剪，缺省用内置默认值 2
+- 计数口径：所有版本目录都参与排序（版本号逐段按整数比较，`25.12.10` > `25.12.2`）；被钉住的版本即使排在 N 名之外也保留
+- 钉住不删：`site.json` 的 `stable` / `oldstable` / `archive` 声明过的版本，以及 `--protect` 传入的版本（CI 传入本次正在编译的版本）
+- 绝不触碰：`snapshots/`、`releases/packages-*`、目录名不含数字的目录、符号链接与非目录条目；删除前校验目标必须是 `releases/` 的直接子目录
+- 回归测试：`bash scripts/tests/prune-releases-test.sh`（改删除逻辑后先跑通它）
 
 ## 编译产物目录结构
 
