@@ -34,6 +34,9 @@
 | `rtfw-builder.yml`          | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
 | `source-update-checker.yml` | 每周五检查上游开发分支更新，自动编译快照版（两个固件） | ① 定时触发（UTC 2:00）<br>② 手动强制触发（`update`）<br>③ 手动指定单个固件（`firmware`）                                                            |
 | `upstream-tag-checker.yml`  | 每天同步稳定发行线配置并检查上游 Tag，自动编译跟踪发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
+| `workflow-run-cleanup.yml`  | 清理过期的工作流运行记录                               | ① 每天定时触发（UTC 3:00）<br>② 手动 `workflow_dispatch`                                                                                              |
+
+`workflow-run-cleanup.yml` 为每个工作流保留最近 3 次运行记录，并删除更早的已完成运行；仍在执行的运行不会被删除。
 
 ### 源码（快照版）更新检测
 
@@ -73,7 +76,7 @@
 - **历史产物复用**：下载上一次成功构建的产物，跳过 `assets/` 目录，加速增量编译
 - **缓存加速**：编译缓存 ccache（脚本自动启用，环境需有 `ccache` 命令）+ 工具链缓存，缩短重复构建时间
 - **自动部署**：编译成功后，固件及索引页自动发布到 GitHub Pages
-- **运行记录清理**：自动保留最近 90 天的工作流日志（且至少保留 7 条）
+- **运行记录清理**：由 `workflow-run-cleanup.yml` 每天清理，每个工作流保留最近 3 次运行记录
 
 ## 支持设备
 

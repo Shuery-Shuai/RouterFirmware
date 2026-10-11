@@ -53,7 +53,6 @@ jobs:
     timeout-minutes: 5 # 本 job 仅做静态解析，耗时极短
     permissions:
       contents: read # 签出仓库读取 site.json
-      actions: write # 清理旧工作流运行记录
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -73,18 +72,6 @@ jobs:
         run: |
           matrix="$(bash "${GITHUB_WORKSPACE}/scripts/upstream-tag.sh" plan)"
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
-
-      # -----------------------------------------------------------------------
-      # 步骤 3: 清理过旧的工作流运行记录，保持仓库整洁
-      # 清理失败不应阻断后续的 Tag 检查，故标记 continue-on-error
-      # -----------------------------------------------------------------------
-      - name: 清理旧工作流运行
-        if: always() # 无论前面步骤成功与否都执行
-        continue-on-error: true
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          retain_days: 7
-          keep_minimum_runs: 7
 
   # ===========================================================================
   # Job: coverage

@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+# =============================================================================
+# 工作流名称: Workflow Run Cleanup
+# 描述: 每天清理所有工作流的旧运行记录，每个工作流保留最近 3 次。
+# =============================================================================
+
+name: Workflow Run Cleanup
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 清理旧工作流运行
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const keepCount = 3;
+            const workflows = await github.paginate(
+              github.rest.actions.listRepoWorkflows,
+              { owner, repo, state: "all", per_page: 100 },
+              (response) => response.data.workflows,
+            );
+
+            let deletedCount = 0;
+            let skippedActiveCount = 0;
+
+            for (const workflow of workflows) {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                { owner, repo, workflow_id: workflow.id, per_page: 100 },
+                (response) => response.data.workflow_runs,
+              );
+              runs.sort(
+                (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+              );
+
+              for (const run of runs.slice(keepCount)) {
+                if (run.status !== "completed") {
+                  skippedActiveCount += 1;
+                  continue;
+                }
+
+                await github.rest.actions.deleteWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                });
+                deletedCount += 1;
+                core.info(`Deleted run ${run.id} from ${workflow.name}`);
+              }
+            }
+
+            core.summary
+              .addHeading("Workflow run cleanup")
+              .addList([
+                `Deleted ${deletedCount} completed run(s) older than the latest ${keepCount} per workflow.`,
+                `Skipped ${skippedActiveCount} older run(s) that are still active.`,
+              ]);
+            await core.summary.write();
+            core.info(
+              `Deleted ${deletedCount} completed run(s); skipped ${skippedActiveCount} active run(s).`,
+            );

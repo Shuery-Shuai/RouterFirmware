@@ -100,7 +100,7 @@ jobs:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false # 不取消正在进行的运行，确保序列化
     permissions:
-      actions: write # 需要列出和删除工作流运行记录
+      contents: read # 签出仓库读取构建脚本与配置
     outputs:
       # 传递给 deploy job
       upload-archive: ${{ steps.config.outputs.upload-archive }}
@@ -485,17 +485,6 @@ jobs:
           path: ${{ github.workspace }}/public
           retention-days: 90
           overwrite: true
-
-      # -----------------------------------------------------------------------
-      # 步骤 19: 清理过旧的工作流运行记录，保持仓库整洁
-      #         仅保留最近 90 天且至少 7 条记录
-      # -----------------------------------------------------------------------
-      - name: 清理旧工作流运行
-        if: ( steps.compile.outputs.status == 'success' || steps.debug-compile.outputs.status == 'success' ) && !cancelled()
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          retain_days: 90
-          keep_minimum_runs: 7
 
   # =============================================================================
   # Job: deploy
