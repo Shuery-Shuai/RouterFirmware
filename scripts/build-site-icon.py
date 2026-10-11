@@ -26,8 +26,8 @@ import sys
 import zlib
 from pathlib import Path
 
-# 与 downloads 页 openwrt.css 的品牌色一致
-NAVY = (0x00, 0x2B, 0x49, 255)
+# Apple touch icon 的不透明底色
+TOUCH_BACKGROUND = (0x00, 0x36, 0x40, 255)
 CYAN = (0x00, 0xA3, 0xE1, 255)
 WHITE = (255, 255, 255, 255)
 TRANSPARENT = (0, 0, 0, 0)
@@ -111,10 +111,10 @@ def _in_round_rect(px: float, py: float, x: float, y: float, w: float, h: float,
 
 
 def color_at(px: float, py: float, *, opaque: bool, ports: tuple, antennas: tuple) -> tuple[int, int, int, int]:
-    """设计网格上的一个采样点。opaque 时四角填海军蓝（iOS 会自己裁圆角）。"""
+    """设计网格上的一个采样点。opaque 时以触屏图标底色填充背景。"""
     if not _in_round_rect(px, py, *TILE):
-        return NAVY if opaque else TRANSPARENT
-    color = NAVY
+        return TOUCH_BACKGROUND if opaque else TRANSPARENT
+    color = TOUCH_BACKGROUND if opaque else TRANSPARENT
     for shape in antennas:
         if _in_round_rect(px, py, *shape):
             color = WHITE
@@ -199,7 +199,6 @@ def svg_text(ports: tuple, antennas: tuple) -> str:
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img">',
         "<title>RouterFirmware</title>",
-        _rect(TILE, "#002B49"),
     ]
     parts.extend(_rect(shape, "#fff") for shape in antennas)
     parts.append(_rect(BODY, "#fff"))
