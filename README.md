@@ -327,17 +327,18 @@
 
 ## 软件包签名密钥
 
-固件仓库中的软件包使用固定的 EC P-256 密钥签名。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/`，并**只发布一份**到站点的 `/assets/common/keys/public-key.pem`（所有固件共用同一密钥对）。
+固件仓库中的软件包使用固定的 EC P-256 密钥签名。这里的 PEM 文件是 APK 仓库签名公钥，不是 HTTPS/TLS 的 X.509 证书，也不用于 `usign`/`opkg`。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/public-key.pem`，并**只发布一份**到站点的 `/assets/common/keys/public-key.pem`（所有固件共用同一密钥对）。
 
 | 位置                                 | 说明                                                                    |
 | ------------------------------------ | ----------------------------------------------------------------------- |
 | `keys/public-key.pem`                | 公钥，随仓库提交；构建时安装到镜像 `/etc/apk/keys/public-key.pem`       |
+| `public/assets/common/keys/public-key.pem` | 站点发布的唯一公钥副本，供用户手动导入                               |
 | Actions Secret `APK_PRIVATE_KEY_B64` | 私钥（base64），CI 构建时还原到源码目录并与仓库内公钥校验               |
 | `keys/private-key.pem`               | 私钥的本地副本，供本地构建使用，已被 `.gitignore` 忽略                  |
 
 > [!CAUTION]
 >
-> `private-key.pem` 是包签名的信任根，持有者可以签出被本固件信任的 `.apk`。**切勿提交到仓库、粘贴到 Issue 或随产物分发**。如需轮换密钥，须同时更新 Secret 与 `keys/public-key.pem`，并通知用户重新导入公钥。
+> `keys/public-key.pem` 是设备验证包签名的信任锚；持有对应 `private-key.pem` 的人可以签出被本固件信任的 `.apk`。**切勿提交私钥到仓库、粘贴到 Issue 或随产物分发**。如需轮换密钥，须同时更新 Secret 与 `keys/public-key.pem`，并通知用户重新导入公钥。
 
 ### 配置密钥
 

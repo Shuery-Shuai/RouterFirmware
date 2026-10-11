@@ -23,7 +23,7 @@
 #   5. 不残留旧 SPA 资产（assets/web、*.index.json、items.json）  （多余）
 #   6. 带 --require-listings 时，每个发布目录都要有生成的 index.html（缺失）
 #   6b. 被跳过的路径（站点 chrome）里不得出现列表页               （多余）
-#   7. 站点发布的公钥与仓库 public-key.pem 一致                  （缺失）
+#   7. 站点 assets/common/keys/public-key.pem 与仓库公钥一致     （缺失）
 #   8. 站点根与各发行版根必须是落地页（发行版目录不存在时跳过）    （缺失）
 #
 # 体积只记录，不作为失败条件。
@@ -467,8 +467,8 @@ _prune_skipped_listings() {
 #######################################
 # 断言 7: 站点发布的公钥必须与仓库公钥一致
 #
-# 设备信任锚就是这把公钥（镜像 /etc/apk/keys/ 与站点 /{fw}/public-key.pem
-# 来自同一次导出）：站点发错公钥会让用户导入错误的钥匙。
+# 设备信任锚就是这把公钥（镜像 /etc/apk/keys/public-key.pem 与站点
+# /assets/common/keys/public-key.pem 来自同一次导出）：站点发错公钥会让用户导入错误的钥匙。
 #
 # Globals:
 #   PUBLIC_DIR
