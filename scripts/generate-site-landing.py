@@ -197,8 +197,8 @@ def page_shell(public_dir: Path, title: str, title_en: str, body: str,
 
 def render_index(config: dict, public_dir: Path, upstream: dict) -> str:
     body = [
-        "<h1>" + line(config.get("title", "固件下载"), "Firmware Downloads", "span") + "</h1>",
-        "<p>" + line(config.get("description", ""), config.get("description_en", ""), "span") + "</p>",
+        "<h1>" + line(config.get("title", "固件下载"), config.get("title_en") or "Router Firmware Download", "span") + "</h1>",
+        "<p>" + line(config.get("description", ""), config.get("description_en", ""), "span", raw=True) + "</p>",
         "<div>",  # 官方首页只有一个内容 div，栏目之间用 <hr/> 分隔
     ]
     blocks = [firmware_sections(config, fw, public_dir, upstream)
@@ -213,7 +213,7 @@ def render_index(config: dict, public_dir: Path, upstream: dict) -> str:
     body.append("\n<hr/>\n".join(blocks))
     body.append("</div>")
     return page_shell(public_dir, config.get("title", "固件下载"),
-                      config.get("title_en") or "Firmware Downloads", "\n".join(body),
+                      config.get("title_en") or "Router Firmware Download", "\n".join(body),
                       str(config.get("stylesheet") or ""))
 
 

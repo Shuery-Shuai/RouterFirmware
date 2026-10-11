@@ -1,7 +1,8 @@
 {
-  "title": "RouterFirmware 固件下载",
-  "description": "Banana Pi BPI-R4 的 OpenWrt / ImmortalWrt 构建产物与软件包仓库。",
-  "description_en": "Build artifacts and package repositories for Banana Pi BPI-R4 (OpenWrt / ImmortalWrt).",
+  "title": "路由器固件下载",
+  "title_en": "Router Firmware Downloads",
+  "description": "欢迎访问 <a href=\"https://rtfw.shuery.lssa.fun\">RouterFirmware</a> 下载区。仓库存放于 <a href=\"https://github.com/Shuery-Shuai/RouterFirmware\">GitHub</a>。请使用下方链接查找合适的目录。",
+  "description_en": "Welcome to the <a href=\"https://rtfw.shuery.lssa.fun\">RouterFirmware</a> download area. Repository stored at <a href=\"https://github.com/Shuery-Shuai/RouterFirmware\">GitHub</a>. Follow the links below to find the appropriate directory.",
   "keep_stable": 2,
   "stylesheet": "https://downloads.immortalwrt.org/openwrt.css",
   "package_key": "/assets/common/keys/public-key.pem",
