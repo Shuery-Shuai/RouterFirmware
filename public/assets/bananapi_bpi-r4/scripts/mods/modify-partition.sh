@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # BPI‑R4 专用 - MediaTek Filogic 分区布局调整
 
 # 需要 source common/scripts/functions.sh

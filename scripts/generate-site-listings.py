@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """为发布树生成官方风格的目录列表页（每个目录一个 index.html）。
 
 对照基准：downloads.immortalwrt.org 的 dir-index.cgi 输出，规格如下

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: bananapi_bpi-r4/scripts/mods/index.sh
 # 用途: 加载 bananapi_bpi-r4/scripts/mods/ 下的设备专用修改脚本
 # 用法: source bananapi_bpi-r4/scripts/mods/index.sh

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/index.sh
 # 用途: 加载 common/scripts/mods/ 下的所有独立修改脚本（定义函数，不执行）
 # 用法: source common/scripts/mods/index.sh

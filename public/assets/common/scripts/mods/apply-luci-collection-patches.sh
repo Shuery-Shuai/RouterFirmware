@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/modify-luci-collections.sh
 # 用途: 批量修改 LuCI 集合的 Makefile，以适应定制需求
 #       1. 移除 luci-app-attendedsysupgrade（所有集合）

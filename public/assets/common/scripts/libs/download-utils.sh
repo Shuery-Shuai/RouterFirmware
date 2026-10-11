@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # 文件下载与 SHA256 哈希计算（增强版）
 #

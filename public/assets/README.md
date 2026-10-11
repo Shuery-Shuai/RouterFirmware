@@ -315,8 +315,7 @@ done
 
 ## 许可证
 
-- 大部分脚本基于 MIT 或 GPL-3.0 许可证，具体见各文件头注释。
-- 本仓库整体采用 **GPL-3.0**。
+- 本仓库脚本、工作流和其他代码统一采用 [Apache License 2.0](https://github.com/Shuery-Shuai/RouterFirmware/blob/main/LICENSE)。P3TERX/Actions-OpenWrt 为项目灵感来源。
 
 ---
 

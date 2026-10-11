@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # =============================================================================
 # 工作流名称: Upstream Source Update Checker
 # 描述: 定期检查 OpenWrt / ImmortalWrt 上游开发分支（快照版）是否有新提交，

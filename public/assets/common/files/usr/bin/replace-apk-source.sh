@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # APK/OPKG 软件源智能替换脚本
 #

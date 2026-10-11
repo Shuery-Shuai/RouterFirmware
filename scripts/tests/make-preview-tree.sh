@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # 生成「本地预览用」的假发布树
 #

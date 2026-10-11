@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/modify-rust-build-config.sh
 # 用途: 修改 Rust 的构建配置，禁用 CI LLVM 下载，改用系统 LLVM
 #       以加速编译过程，避免下载预编译 LLVM 二进制文件

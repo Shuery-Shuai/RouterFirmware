@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # =============================================================================
 # 工作流名称: Router Firmware Builder
 # 描述: 自动编译 OpenWrt / ImmortalWrt 固件，并部署至 GitHub Pages 供下载。

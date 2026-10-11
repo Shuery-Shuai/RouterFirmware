@@ -1,7 +1,7 @@
 # 路由器固件构建项目
 
 [![Router Firmware Builder](https://github.com/Shuery-Shuai/RouterFirmware/actions/workflows/rtfw-builder.yml/badge.svg)](https://github.com/Shuery-Shuai/RouterFirmware/actions/workflows/rtfw-builder.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 路由器固件自动构建系统，支持自定义固件、版本、设备，并在 Github 工作流构建后上传至 Github 页面部署。
 
@@ -644,14 +644,13 @@ RouterFirmware/
 
 ## 许可证
 
-- 本项目脚本采用 [MIT License](LICENSE)
-- 本项目 GitHub Actions 工作流改编自 [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt)，采用 MIT License
+- 本仓库代码、脚本、配置与文档统一采用 [Apache License 2.0](LICENSE)。P3TERX/Actions-OpenWrt 为项目灵感来源。
 
 ## 致谢
 
 - **[ImmortalWrt](https://github.com/immortalwrt/immortalwrt)** - 感谢 ImmortalWrt 项目团队的持续贡献
 - **[OpenWrt](https://openwrt.org/)** - 感谢 OpenWrt 社区的开源精神
-- **[P3TERX](https://github.com/P3TERX)** - 感谢提供 Actions 工作流模板
+- **[P3TERX](https://github.com/P3TERX)** - 感谢其项目带来的灵感
 - **[sundaqiang](https://github.com/sundaqiang)** - 感谢提供构建流程参考
 
 ---

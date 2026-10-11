@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """把站点字体子集化并 base64 内联进 site.css。
 
 为什么这么做：

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # 站点目录结构校验与清理（发布前守门）
 #

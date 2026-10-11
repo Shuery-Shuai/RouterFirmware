@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/rename-qbittorrent.sh
 # 用途: 在 ImmortalWrt 构建中，将第三方 luci-app-qbittorrent 重命名为 luci-app-qbittorrent-original，
 #       以避免与官方自带的同名包冲突。

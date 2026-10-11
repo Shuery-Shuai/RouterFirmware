@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/set-dae-version.sh
 # 用途: 修改 dae 软件包的版本、源地址和哈希值，用于固定特定版本或升级
 #       自动处理版本号中的 rc/beta 后缀，生成符合 OpenWrt 规范的 PKG_VERSION

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/fix-libnl-tiny-compile.sh
 # 用途: 修复 libnl-tiny 在 GCC 14 下的编译警告（-Wparentheses）
 #       通过在 Makefile 中添加 -Wno-parentheses 选项压制错误

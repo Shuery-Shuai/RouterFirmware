@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/patch-easyupdate.sh
 # 用途: 对 easyupdate.sh 进行固件适配（OpenWrt / ImmortalWrt）
 #       1. 强制保留配置（-k 参数）         —— 所有固件

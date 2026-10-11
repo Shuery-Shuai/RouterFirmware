@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # Git 仓库克隆/更新（带重试）
 #

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/fix-qbittorrent-deps.sh
 # 用途: 修复 qBittorrent 核心包的 libtorrent 依赖关系，
 #       将过时的 +rblibtorrent 替换为正确的 +libtorrent-rasterbar。

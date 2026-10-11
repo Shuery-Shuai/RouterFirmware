@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: bananapi_bpi-r4/scripts/diy-part1.immortalwrt.sh
 # 用途: ImmortalWrt 构建第一阶段 - 在 feeds update 前执行
 #       1. 修改 BPI‑R4 分区布局

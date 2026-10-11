@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """生成发布站图标（favicon / apple-touch）。
 
 标记是一枚四口路由器正面：海军蓝圆角方块、白色机身、两组青色网口。

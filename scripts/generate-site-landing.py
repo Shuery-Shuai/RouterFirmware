@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """生成站点落地页（中文默认、可切换英文）与各发行版落地页。
 
 官方发布站首页是**手写** HTML（栏目：Stable Release / Old Stable Release /

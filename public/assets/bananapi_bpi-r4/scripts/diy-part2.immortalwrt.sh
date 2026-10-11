@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: bananapi_bpi-r4/scripts/diy-part2.immortalwrt.sh
 # 用途: ImmortalWrt 构建第二阶段 - 在 feeds install 前执行
 #       1. 修改系统默认配置

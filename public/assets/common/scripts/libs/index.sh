@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/libs/index.sh
 # 用途: 加载 common/scripts/libs/ 下的所有独立函数库脚本（定义函数，不执行）
 # 用法: source common/scripts/libs/index.sh

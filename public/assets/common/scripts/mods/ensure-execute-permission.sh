@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/ensure-execute-permission.sh
 # 用途: 通用地为指定文件添加可执行权限（+x）
 #       常用于自定义脚本（如 restore-packages.sh）在构建过程中需要被执行

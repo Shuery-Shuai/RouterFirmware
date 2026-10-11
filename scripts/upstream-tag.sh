@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # 上游版本 Tag 检查脚本
 #

@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # 文件: common/scripts/mods/add-xdp-sockets-diag.sh
 # 用途: 向内核网络支持模块中添加 XDP sockets 诊断接口
 #       使 `ss` 工具能够监控 PF_XDP sockets，用于 eBPF XDP 程序调试

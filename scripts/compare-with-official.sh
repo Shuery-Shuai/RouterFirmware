@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # 本地发布树 vs 官方 downloads 站 —— 差异比对
 #

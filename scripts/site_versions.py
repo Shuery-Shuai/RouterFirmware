@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """版本号比较的共享规则（目录名 → 可比较的整数元组）。
 
 同一棵发布树会被两个脚本按版本号排序：generate-site-landing.py 用它给「版本归档」

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """按保留策略裁剪发布树中的稳定版目录（只保留版本号最新的 N 个）。
 
 发布树里每个新稳定版都会占一个目录 <public-dir>/<固件id>/releases/<版本>/，不裁剪

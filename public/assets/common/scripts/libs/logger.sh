@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # OpenWrt/ImmortalWrt 构建日志函数库
 #

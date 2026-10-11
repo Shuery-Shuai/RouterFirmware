@@ -1,5 +1,8 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 [ "$ACTION" = "ifup" ] && [ "$INTERFACE" = "wan" ] && {
     sleep 30
     /usr/bin/replace-apk-source.sh
 }
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """抓取上游官方下载站的版本事实（.versions.json），归一化成站点可消费的产物。
 
 站点页面要回答两件事：官方现在把哪个版本当作最新稳定版 / 旧稳定版，以及官方

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 #######################################
 # OpenWrt/ImmortalWrt 编译产物复制脚本
 #

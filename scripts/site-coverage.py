@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """把「官方版本事实 × 站点声明 × 发布树」join 成一张覆盖率报告。
 
 三份数据各代表一种真相，缺一不可：
