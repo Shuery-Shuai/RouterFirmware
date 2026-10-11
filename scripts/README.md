@@ -30,6 +30,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 - **source-update.sh** - 上游开发分支检查（输出检查矩阵与分支最新提交）
 - **prune-releases.py** - 按 keep_stable 裁剪发布树中的历史稳定版（保留最近 N 个）
 - **fetch-upstream-versions.py** - 抓取上游官方版本事实（.versions.json），失败回退缓存
+- **sync-upstream-stable-lines.py** - 按 `keep_stable` 将最近的官方稳定发行线同步到站点配置
 - **generate-site-landing.py** - 生成站点首页与各发行版首页（只链接真实存在的目录）
 - **generate-site-listings.py** - 为发布树每个目录生成官方风格的目录列表页
 - **site-coverage.py** - 官方事实 × 站点声明 × 发布树的三方覆盖率比对（CI 用它做缺口告警）
@@ -300,8 +301,9 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 ./upstream-tag.sh select --firmware=openwrt --line=25.12
 ```
 
-功能：读取 `config/site.json` 声明的 `stable` / `oldstable` 发行线，通过 `git ls-remote` 查询上游版本 Tag，供 `upstream-tag-checker.yml` 判断是否需要触发正式版编译。
+功能：读取 `config/site.json` 的 `tracked_lines`（兼容 `stable` / `oldstable`）发行线，通过 `git ls-remote` 查询上游版本 Tag，供 `upstream-tag-checker.yml` 判断是否需要触发正式版编译。
 
+- 自动同步由 `upstream-tag-checker.yml` 执行：取 `keep_stable` 数量对应的最新稳定发行线写入 `firmwares[].tracked_lines`，并创建配置 PR；`0` 时只跟踪上游提供的 `stable` / `oldstable`。PR 合并后，tag 检查矩阵按这些发行线工作
 - `plan`：输出单行 JSON 数组（matrix include 列表），无跟踪目标时输出 `[]`
 - `select`：输出发行线上最新的正式版 Tag（如 `v25.12.6`）；该发行线尚无正式版时回退到最新预发布版（`rc` / `beta` / `alpha`），无 Tag 时输出为空
 - 是否已经编译过由调用方（工作流缓存）判断，脚本不维护基线；新增发行线只需在 `site.json` 中声明
@@ -364,7 +366,7 @@ OpenWrt 编译工具链已拆分为模块化脚本，支持独立运行或通过
 
 - 保留数量取自 `config/site.json`：固件条目的 `keep_stable` 覆盖站点级同名设定，`--keep` 再覆盖两者；`0` 表示不裁剪，缺省用内置默认值 2
 - 计数口径：所有版本目录都参与排序（版本号逐段按整数比较，`25.12.10` > `25.12.2`）；被钉住的版本即使排在 N 名之外也保留
-- 钉住不删：`site.json` 的 `stable` / `oldstable` / `archive` 声明过的版本，以及 `--protect` 传入的版本（CI 传入本次正在编译的版本）
+- 钉住不删：`site.json` 的 `stable` / `oldstable` / `archive` 声明过的版本、每条 `tracked_lines` 的最新本地版本，以及 `--protect` 传入的版本（CI 传入本次正在编译的版本）
 - 绝不触碰：`snapshots/`、`releases/packages-*`、目录名不含数字的目录、符号链接与非目录条目；删除前校验目标必须是 `releases/` 的直接子目录
 - 回归测试：`bash scripts/tests/prune-releases-test.sh`（改删除逻辑后先跑通它）
 
@@ -458,7 +460,7 @@ downloads.immortalwrt.org 的 `dir-index.cgi` 输出。
 - `--summary` 把报告追加到文件（CI 传 `$GITHUB_STEP_SUMMARY`，报告直接进 Job Summary）
 - CI 用法：`rtfw-builder.yml` 用 `--fail-on=none` 只报告（发布本身有效，不该被缺口卡住）；
   `upstream-tag-checker.yml` 的 coverage job 用 `--fail-on=drift` 变红提醒「上游换线了」
-- 回归测试：`bash scripts/tests/site-coverage-test.sh`（全程离线，21 条断言）
+- 回归测试：`bash scripts/tests/site-coverage-test.sh`（全程离线，23 条断言）
 
 ### 站点配置（config/site.json）
 
@@ -470,7 +472,7 @@ downloads.immortalwrt.org 的 `dir-index.cgi` 输出。
 | `stylesheet` | 官方样式表地址（可选；未配置则不引用跨域样式） | 两个站点生成器 |
 | `package_key` | 软件包仓库公钥路径（可选） | 落地页生成器 |
 | `scripts_path` | 构建脚本与配置的发布路径（可选） | 落地页生成器 |
-| `keep_stable` | 默认保留的稳定版数量（站点级，可被固件级覆盖） | prune-releases.py |
+| `keep_stable` | 稳定版目录保留数量及自动跟踪的发行线数量（站点级，可被固件级覆盖）；`0` 时不裁剪且仅跟踪官方 stable / oldstable | prune-releases.py、sync-upstream-stable-lines.py |
 | `defaults.firmware` / `version` | 编译缺省的固件与版本（工作流输入为空时用它） | rtfw-builder.yml、构建脚本 |
 | `defaults.profile` | 设备 profile 缺省值 | config-management.sh、copy-pre-files.sh |
 | `defaults.target` / `device` | target/subtarget 与设备名缺省值 | compare-with-official.sh |
@@ -480,10 +482,11 @@ downloads.immortalwrt.org 的 `dir-index.cgi` 输出。
 | `firmwares[].repo` | 上游 Git 仓库（Tag 跟踪、快照版检测与源码克隆共用，可选） | upstream-tag.sh、source-update.sh、source-management.sh |
 | `firmwares[].branch` | 上游开发分支（快照版检测与编译共用，可选） | source-update.sh、source-management.sh |
 | `firmwares[].downloads` | 上游下载站根目录（版本事实与官方站根，可选） | fetch-upstream-versions.py、compare-with-official.sh |
-| `firmwares[].stable` / `oldstable` | 当前 / 旧稳定版声明（意图；也用于 prune 钉住与发行线跟踪） | 落地页、prune、upstream-tag |
+| `firmwares[].stable` / `oldstable` | 当前 / 旧稳定版本声明（用于落地页主标记） | 落地页、prune |
+| `firmwares[].tracked_lines` | 自动同步的完整跟踪发行线（stable / oldstable 仍用于页面主标记） | upstream-tag、coverage、prune |
 | `firmwares[].snapshots` | 是否展示开发快照栏目；同时是快照版更新检测的跟踪开关 | 落地页生成器、source-update.sh |
 | `firmwares[].archive` | 手工归档声明（钉住不删；页面归档栏目已改为从发布树派生） | prune-releases.py |
-| `firmwares[].keep_stable` | 固件级保留数量覆盖 | prune-releases.py |
+| `firmwares[].keep_stable` | 固件级保留数量覆盖 | prune-releases.py、sync-upstream-stable-lines.py |
 
 > 缺省值一律遵循「命令行参数 → `config/site.json` → 脚本内兜底字面值」的优先级；
 > shell 脚本用 `common.sh` 的 `config_value` / `config_firmware_value` 读取配置

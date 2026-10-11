@@ -67,9 +67,12 @@ def load_json(path: Path) -> object | None:
 
 
 def declared_lines(firmware: dict) -> set[str]:
-    """该固件声明的发行线集合（stable + oldstable）。"""
-    return {release_line(str(firmware[key])) for key in ("stable", "oldstable")
-            if firmware.get(key)}
+    """该固件声明的发行线集合（tracked_lines + stable + oldstable）。"""
+    values = [firmware.get(key) for key in ("stable", "oldstable")]
+    tracked = firmware.get("tracked_lines")
+    if isinstance(tracked, list):
+        values.extend(tracked)
+    return {release_line(value) for value in values if isinstance(value, str) and value}
 
 
 def local_versions(public_dir: Path | None, firmware_id: str) -> dict[str, tuple[int, ...]]:
@@ -105,7 +108,9 @@ def compare_firmware(firmware: dict, upstream: dict, public_dir: Path | None) ->
         ("stable", official_stable, declared_stable, "稳定版"),
         ("oldstable", official_oldstable, declared_oldstable, "旧稳定版"),
     ):
-        if official and release_line(official) not in lines:
+        managed_lines = isinstance(firmware.get("tracked_lines"), list)
+        excluded_oldstable = key == "oldstable" and managed_lines
+        if official and release_line(official) not in lines and not excluded_oldstable:
             findings.append({
                 "kind": "drift", "firmware": firmware_id,
                 "message": f"官方{label}已是 {official}（{release_line(official)} 线），"

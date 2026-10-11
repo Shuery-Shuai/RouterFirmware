@@ -99,6 +99,27 @@ assert "gap：声明了却没发布" 'grep -q "\*\*gap\*\*（openwrt）" <<<"${O
 assert "local：本地有、官方没有" 'grep -q "\*\*local\*\*（openwrt）" <<<"${OUT}"'
 assert "与官方一致的项不报 drift" '! grep -q "\*\*drift\*\*（immortalwrt）" <<<"${OUT}"'
 
+echo "### 场景 1b: 自动跟踪线按 keep_stable 策略豁免未跟踪旧稳定线"
+cat >"${ROOT}/tracked.json" <<'JSON'
+{"firmwares": [{"id": "openwrt", "stable": "25.12.5",
+                "oldstable": null, "tracked_lines": ["25.12"]}]}
+JSON
+python3 "${COVERAGE}" --config="${ROOT}/tracked.json" \
+  --upstream="${ROOT}/upstream.json" --fail-on=drift --quiet >/dev/null 2>&1
+rc=$?
+assert "仅故意未跟踪 oldstable 时不触发 drift" '[ "${rc}" = "0" ]'
+cat >"${ROOT}/tracked-gap.json" <<'JSON'
+{"firmwares": [{"id": "openwrt", "stable": "25.12.5",
+                "oldstable": "24.10.8", "tracked_lines": ["25.12"]}]}
+JSON
+mkdir -p "${ROOT}/public/openwrt/releases/25.12.5/targets"
+python3 "${COVERAGE}" --config="${ROOT}/tracked-gap.json" \
+  --upstream="${ROOT}/upstream.json" --public-dir="${ROOT}/public" \
+  --fail-on=gap --quiet >/dev/null 2>&1
+rc=$?
+assert "受管理配置仍检查 oldstable 的发布缺口" '[ "${rc}" = "1" ]'
+rm -rf "${ROOT}/public/openwrt/releases/25.12.5"
+
 echo "### 场景 2: --fail-on 门槛"
 run --fail-on=drift >/dev/null 2>&1
 assert "drift 门槛 → 退出 1" '[ "$?" = "1" ]'

@@ -7,7 +7,7 @@
 #   1. plan   - 由 config/site.json 推导需要跟踪的「固件 + 发行线」矩阵
 #   2. select - 在指定发行线上挑选需要编译的最新版本 Tag
 #
-# 发行线取自 config/site.json 中各固件声明的 stable / oldstable
+# 发行线取自 config/site.json 中各固件声明的 tracked_lines（兼容 stable / oldstable）
 # （取主次版本号，如 25.12.5 → 25.12）。上游仓库地址同样来自 site.json 的
 # firmwares[].repo——脚本里不写死任何发行版数据，未声明 repo 的固件会被跳过
 # 并告警。每条发行线优先选择最新正式版 Tag（如 v25.12.6）；该发行线尚无正式版
@@ -130,7 +130,7 @@ _parse_release_line() {
 #######################################
 # 生成跟踪矩阵（内部函数）
 #
-# 从 config/site.json 读取每个固件声明的 stable / oldstable，
+# 从 config/site.json 读取每个固件声明的 tracked_lines、stable / oldstable，
 # 按「固件 + 发行线」去重后输出 GitHub Actions matrix.include 列表。
 # 同一发行线上同时声明了 stable 与 oldstable 时只保留一条（声明靠前者）。
 #
@@ -162,7 +162,7 @@ _plan_matrix() {
   declare -A seen_lines=()
   local firmware title declared line key repo
 
-  # jq: 逐固件输出 "固件ID \t 展示名 \t 上游仓库 \t 已声明版本"，stable 在前、oldstable 在后
+  # jq: 逐固件输出固件已声明的发行线版本，stable / oldstable 兼容旧配置
   while IFS=$'\t' read -r firmware title repo declared; do
     [[ -z "${firmware}" || -z "${declared}" ]] && continue
 
@@ -186,7 +186,7 @@ _plan_matrix() {
     | .id as $id
     | .title as $title
     | (.repo // "") as $repo
-    | .stable, .oldstable
+    | ([.tracked_lines[]?] + [.stable, .oldstable])[]
     | select(. != null and . != "")
     | "\($id)\t\($title)\t\($repo)\t\(.)"
   ' "${config}")

@@ -71,6 +71,7 @@ config_a() {
     {"id": "immortalwrt", "stable": "25.12.5", "oldstable": null,
      "snapshots": true, "archive": ["24.10.3"]},
     {"id": "openwrt", "keep_stable": 1, "stable": "25.12.5",
+     "tracked_lines": ["25.12", "24.10"],
      "snapshots": true, "archive": []}
   ]
 }
@@ -85,11 +86,11 @@ config_a
 run --quiet
 rc=$?
 assert "退出码 0" '[ "${rc}" = "0" ]'
-assert "openwrt 固件级 keep_stable=1 生效，仅留 25.12.5" \
-  '[ "$(ls "${ROOT}/public/openwrt/releases")" = "25.12.5" ]'
-assert "24.10.11 被删（数值比较：24.10.11 > 24.10.2）" \
-  '[ ! -d "${ROOT}/public/openwrt/releases/24.10.11" ]'
+assert "openwrt 固件级 keep_stable=1 + 跟踪线钉住" \
+  '[ -d "${ROOT}/public/openwrt/releases/25.12.5" ] && [ -d "${ROOT}/public/openwrt/releases/24.10.11" ]'
 assert "24.10.2 被删" '[ ! -d "${ROOT}/public/openwrt/releases/24.10.2" ]'
+assert "tracked_lines 钉住 24.10 线最新版本" \
+  '[ -d "${ROOT}/public/openwrt/releases/24.10.11" ]'
 assert "25.11.0 超出 N=2 被删" '[ ! -d "${ROOT}/public/immortalwrt/releases/25.11.0" ]'
 assert "25.12.5 保留" '[ -d "${ROOT}/public/immortalwrt/releases/25.12.5" ]'
 assert "25.12.2 保留" '[ -d "${ROOT}/public/immortalwrt/releases/25.12.2" ]'
@@ -131,7 +132,8 @@ rc=$?
 assert "退出码 0" '[ "${rc}" = "0" ]'
 assert "--protect 的 25.11.0 保留" '[ -d "${ROOT}/public/immortalwrt/releases/25.11.0" ]'
 assert "--protect 的 24.10.2 保留" '[ -d "${ROOT}/public/openwrt/releases/24.10.2" ]'
-assert "未钉住的 24.10.11 仍被删" '[ ! -d "${ROOT}/public/openwrt/releases/24.10.11" ]'
+assert "跟踪的 24.10 线最新版本仍保留" \
+  '[ -d "${ROOT}/public/openwrt/releases/24.10.11" ]'
 
 echo "### 场景 5: 配置非法时明确报错"
 build_tree

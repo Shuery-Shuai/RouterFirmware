@@ -20,6 +20,7 @@ N 名之外也保留，因此 site.json 手工归档过的版本会让实际目�
   - releases/packages-* 目录（官方共享包目录，不是版本目录）
   - site.json 声明过的版本（stable / oldstable / archive）——声明即保护，
     否则手工归档的版本会被下一次构建删掉
+  - tracked_lines 中每条发行线的最新本地版本——避免跟踪的旧发行线被数量裁剪删掉
   - --protect 指定的版本（CI 传入本次正在构建的版本，防止重建旧版后被立刻删除）
   - 目录名里不含数字的目录（版本号无法比较，保守保留并告警）
   - 符号链接与非目录条目（一律不动）
@@ -69,6 +70,19 @@ def declared_versions(fw: dict) -> set[str]:
     return declared
 
 
+def declared_lines(fw: dict) -> set[str]:
+    """取配置中显式跟踪的发行线。"""
+    lines = set()
+    tracked = fw.get("tracked_lines")
+    if isinstance(tracked, list):
+        lines.update(item for item in tracked if isinstance(item, str) and item)
+    for key in ("stable", "oldstable"):
+        value = fw.get(key)
+        if isinstance(value, str) and value:
+            lines.add(".".join(value.split(".")[:2]))
+    return lines
+
+
 def resolve_keep(config: dict, fw: dict, override: int | None) -> tuple[int, str]:
     """解析某固件最终生效的保留数量，返回 (数量, 来源说明)。"""
     if override is not None:
@@ -95,6 +109,7 @@ def prune_firmware(public_dir: Path, fw: dict, keep: int, protected: set[str],
     firmware = fw["id"]
     releases = public_dir / firmware / "releases"
     declared = declared_versions(fw)
+    tracked_lines = declared_lines(fw)
     stats = {"firmware": firmware, "keep": keep, "candidates": 0,
              "kept": [], "dropped": [], "pinned": [], "skipped": []}
 
@@ -124,6 +139,16 @@ def prune_firmware(public_dir: Path, fw: dict, keep: int, protected: set[str],
             pinned[name] = "本次构建/--protect"
         elif name in declared:
             pinned[name] = "site.json 声明"
+
+    latest_by_line: dict[str, tuple[tuple[int, ...], str]] = {}
+    for item in versions:
+        line = ".".join(item[1].split(".")[:2])
+        if line not in latest_by_line or item > latest_by_line[line]:
+            latest_by_line[line] = item
+    for line in tracked_lines:
+        latest = latest_by_line.get(line)
+        if latest and latest[1] not in pinned:
+            pinned[latest[1]] = "跟踪发行线最新版本"
 
     ordered = sorted(versions, key=lambda item: (item[0], item[1]), reverse=True)
     stats["candidates"] = len(ordered)

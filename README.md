@@ -33,7 +33,7 @@
 | --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rtfw-builder.yml`          | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
 | `source-update-checker.yml` | 每周五检查上游开发分支更新，自动编译快照版（两个固件） | ① 定时触发（UTC 2:00）<br>② 手动强制触发（`update`）<br>③ 手动指定单个固件（`firmware`）                                                            |
-| `upstream-tag-checker.yml`  | 每天检查上游版本 Tag，自动编译 stable/oldstable 发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
+| `upstream-tag-checker.yml`  | 每天同步稳定发行线配置并检查上游 Tag，自动编译跟踪发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
 
 ### 源码（快照版）更新检测
 
@@ -50,7 +50,7 @@
 
 `upstream-tag-checker.yml` 每天检查上游仓库的版本标签，让正式版固件随上游发版自动编译：
 
-- **跟踪范围**：`config/site.json` 中每个固件声明的 `stable` / `oldstable` 发行线（取主次版本号，如 `25.12.5` → `25.12`）；新增发行线只需先在 `site.json` 声明
+- **跟踪范围**：每天依据官方版本事实和 `keep_stable` 选择最近的稳定发行线，自动创建 `site.json` 配置 PR；合并后由 `tracked_lines` 驱动标签检查，`stable` / `oldstable` 仍用于页面主标记
 - **版本选择**：每条发行线取最新正式版 Tag（如 `v25.12.6`）；该发行线尚无正式版时，回退到最新预发布版（`rc` / `beta` / `alpha`）
 - **触发去重**：同一 Tag 只触发一次编译（由工作流缓存记录）；手动触发时把 `tag-update` 设为 `true` 可强制重新编译最新 Tag
 - **首次启用**：缓存为空，会为每条发行线补一次当前最新 Tag 的编译（基线回填），此后仅随新 Tag 触发
@@ -59,10 +59,10 @@
 
 正式版编译会让发布树不断累积版本目录（每个版本上百 MB，而 GitHub Pages 单站上限 1 GB），因此站点按数量裁剪历史稳定版：
 
-- **保留数量**：`config/site.json` 的 `keep_stable` 决定留几个（可被固件条目里的同名字段覆盖）
-  - `keep_stable: 2`（当前值）：每个固件只留版本号最新的 2 个稳定版目录
-  - `keep_stable: 0`：不裁剪，保留全部历史版本；缺省时用内置默认值 2
-- **声明即钉住**：`site.json` 里 `stable` / `oldstable` / `archive` 声明过的版本，即使排在保留数量之外也不删除，避免手工归档的版本被下一次构建删掉
+- **保留 / 跟踪数量**：`config/site.json` 的 `keep_stable` 决定裁剪保留数和自动跟踪的最近发行线数（可被固件条目里的同名字段覆盖）
+  - `keep_stable: 2`（当前值）：保留最新 2 个稳定版目录，并跟踪最近 2 条稳定发行线
+  - `keep_stable: 0`：不裁剪，跟踪上游明确标记的 `stable` / `oldstable`；缺省时用内置默认值 2
+- **声明即钉住**：`site.json` 里 `stable` / `oldstable` / `archive` 声明过的版本不删除；每条 `tracked_lines` 额外钉住该发行线本地最新版本
 - **绝不触碰**：`snapshots/`（开发快照）、`releases/packages-*`（官方共享包目录）、目录名里没有版本号的目录、符号链接
 - **执行时机**：构建任务在 `public/` 组装完成后裁一次（上传的产物不再累积旧版本），部署任务在生成页面前再裁一次（对 `upload-archive` 上传的包同样生效）；两次都用 `--protect` 钉住本次正在编译的版本
 - **本地预演**：`python3 scripts/prune-releases.py --dry-run` 只打印将要删除的目录，不落盘
