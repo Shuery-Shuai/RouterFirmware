@@ -53,8 +53,22 @@ from site_i18n import LANG_TOGGLE, SITE_JS_PATH, asset_url, icon_tags, line, tit
 # 生成的列表页文件名
 INDEX_NAME = "index.html"
 
-# 官方的 KB 显示格式：字节/1024，保留一位小数
-KB = 1024.0
+# 二进制单位换算基数
+BYTES_PER_UNIT = 1024
+SIZE_UNITS_ZH = (
+    "字节",
+    "千字节",
+    "兆字节",
+    "吉字节",
+    "太字节",
+    "拍字节",
+    "艾字节",
+    "泽字节",
+    "尧字节",
+)
+SIZE_UNITS_EN = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
+WEEKDAYS_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 # 生成列表页时要跳过的路径（相对 public 根的 POSIX 路径）。
 # 站点自身的资源（字体/CSS/JS/搜索索引）属于站点 chrome：既不为它生成列表页，
@@ -89,14 +103,32 @@ def is_skipped(name: str, rel_dir: str, skip_paths: tuple[str, ...]) -> bool:
 
 
 def fmt_size(size: int) -> str:
-    """字节 → 官方风格体积字符串（KB，一位小数）。"""
-    return f"{size / KB:.1f} KB"
+    """Return a bilingual, automatically scaled file size."""
+    value = float(size)
+    unit_index = 0
+    while value >= BYTES_PER_UNIT and unit_index < len(SIZE_UNITS_EN) - 1:
+        value /= BYTES_PER_UNIT
+        unit_index += 1
+
+    precision = ".0f" if unit_index == 0 else ".1f"
+    value_text = format(value, precision)
+    return line(
+        f"{value_text} {SIZE_UNITS_ZH[unit_index]}",
+        f"{value_text} {SIZE_UNITS_EN[unit_index]}",
+    )
 
 
 def fmt_date(mtime: float) -> str:
-    """时间戳 → ctime 风格字符串；单位数日号用空格填充（与官方一致）。"""
+    """Return a bilingual date and time in the current local time zone."""
     lt = time.localtime(mtime)
-    return f"{time.strftime('%a %b', lt)} {lt.tm_mday:2d} {time.strftime('%H:%M:%S %Y', lt)}"
+    hour_12 = lt.tm_hour % 12 or 12
+    period = "AM" if lt.tm_hour < 12 else "PM"
+    return line(
+        f"{lt.tm_year}年{lt.tm_mon}月{lt.tm_mday}日 "
+        f"{lt.tm_hour:02d}:{lt.tm_min:02d}:{lt.tm_sec:02d}",
+        f"{WEEKDAYS_EN[lt.tm_wday]}, {MONTHS_EN[lt.tm_mon - 1]} {lt.tm_mday}, "
+        f"{lt.tm_year}, {hour_12}:{lt.tm_min:02d}:{lt.tm_sec:02d} {period}",
+    )
 
 
 def parse_sha256sums(path: Path) -> dict[str, str]:
