@@ -29,11 +29,11 @@
 
 ### 主要工作流
 
-| 工作流文件名                     | 用途                                                   | 触发方式                                                                                                                                            |
-| -------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rtfw-builder.yml`               | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
-| `source-update-checker.yml`      | 每周五检查上游开发分支更新，自动编译快照版（两个固件） | ① 定时触发（UTC 2:00）<br>② 手动强制触发（`update`）<br>③ 手动指定单个固件（`firmware`）                                                            |
-| `upstream-tag-checker.yml`       | 每天检查上游版本 Tag，自动编译 stable/oldstable 发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
+| 工作流文件名                | 用途                                                   | 触发方式                                                                                                                                            |
+| --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rtfw-builder.yml`          | 编译固件并部署到 GitHub Pages                          | ① `push` 到 `main` 分支或版本标签<br>② `repository_dispatch` 外部触发<br>③ 手动 `workflow_dispatch`（可配置固件类型、版本、设备、menuconfig、缓存） |
+| `source-update-checker.yml` | 每周五检查上游开发分支更新，自动编译快照版（两个固件） | ① 定时触发（UTC 2:00）<br>② 手动强制触发（`update`）<br>③ 手动指定单个固件（`firmware`）                                                            |
+| `upstream-tag-checker.yml`  | 每天检查上游版本 Tag，自动编译 stable/oldstable 发行线 | ① 定时触发（UTC 18:00）<br>② 手动强制触发（`tag-update`）                                                                                           |
 
 ### 源码（快照版）更新检测
 
@@ -329,12 +329,12 @@
 
 固件仓库中的软件包使用固定的 EC P-256 密钥签名。这里的 PEM 文件是 APK 仓库签名公钥，不是 HTTPS/TLS 的 X.509 证书，也不用于 `usign`/`opkg`。密钥固定后，设备升级固件仍会信任新构建的仓库，不会再出现 `UNTRUSTED signature`。公钥在构建时写入镜像的 `/etc/apk/keys/public-key.pem`，并**只发布一份**到站点的 `/assets/common/keys/public-key.pem`（所有固件共用同一密钥对）。
 
-| 位置                                 | 说明                                                                    |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| `keys/public-key.pem`                | 公钥，随仓库提交；构建时安装到镜像 `/etc/apk/keys/public-key.pem`       |
-| `public/assets/common/keys/public-key.pem` | 站点发布的唯一公钥副本，供用户手动导入                               |
-| Actions Secret `APK_PRIVATE_KEY_B64` | 私钥（base64），CI 构建时还原到源码目录并与仓库内公钥校验               |
-| `keys/private-key.pem`               | 私钥的本地副本，供本地构建使用，已被 `.gitignore` 忽略                  |
+| 位置                                       | 说明                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| `keys/public-key.pem`                      | 公钥，随仓库提交；构建时安装到镜像 `/etc/apk/keys/public-key.pem` |
+| `public/assets/common/keys/public-key.pem` | 站点发布的唯一公钥副本，供用户手动导入                            |
+| Actions Secret `APK_PRIVATE_KEY_B64`       | 私钥（base64），CI 构建时还原到源码目录并与仓库内公钥校验         |
+| `keys/private-key.pem`                     | 私钥的本地副本，供本地构建使用，已被 `.gitignore` 忽略            |
 
 > [!CAUTION]
 >
@@ -482,17 +482,17 @@ docker run --rm -it \
 
 ### 核心构建脚本
 
-| 脚本文件                       | 功能说明                           |
-| ------------------------------ | ---------------------------------- |
-| `scripts/make.sh`              | 主入口：协调整个构建流程           |
-| `scripts/common.sh`            | 通用函数库：日志、工具函数         |
-| `scripts/source-management.sh` | 源码管理：克隆、切换版本           |
-| `scripts/feeds-management.sh`  | Feeds 管理：更新、安装依赖         |
-| `scripts/config-management.sh` | 配置管理：生成 .config 文件        |
-| `scripts/copy-pre-files.sh`    | 复制编译前配置：DIY 脚本、配置文件 |
-| `scripts/build.sh`             | 执行编译：多线程编译、错误处理     |
-| `scripts/copy-bin-files.sh`    | 复制产物：固件、哈希、元数据       |
-| `scripts/verify-site-structure.sh` | 发布前校验：站点目录结构守门      |
+| 脚本文件                           | 功能说明                           |
+| ---------------------------------- | ---------------------------------- |
+| `scripts/make.sh`                  | 主入口：协调整个构建流程           |
+| `scripts/common.sh`                | 通用函数库：日志、工具函数         |
+| `scripts/source-management.sh`     | 源码管理：克隆、切换版本           |
+| `scripts/feeds-management.sh`      | Feeds 管理：更新、安装依赖         |
+| `scripts/config-management.sh`     | 配置管理：生成 .config 文件        |
+| `scripts/copy-pre-files.sh`        | 复制编译前配置：DIY 脚本、配置文件 |
+| `scripts/build.sh`                 | 执行编译：多线程编译、错误处理     |
+| `scripts/copy-bin-files.sh`        | 复制产物：固件、哈希、元数据       |
+| `scripts/verify-site-structure.sh` | 发布前校验：站点目录结构守门       |
 
 ### DIY 自定义脚本
 

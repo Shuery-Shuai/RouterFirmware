@@ -71,10 +71,8 @@ SIZE_UNITS_EN = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB")
 WEEKDAYS_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
-# 生成列表页时要跳过的路径（相对 public 根的 POSIX 路径）。
-# 站点自身的资源（字体/CSS/JS/搜索索引）属于站点 chrome：既不为它生成列表页，
-# 也不在父目录的列表里出现——否则父目录会出现指向 404 的死链。
-DEFAULT_SKIP_PATHS = ("assets/site",)
+# 生成列表页时默认不跳过目录；需要排除的路径由调用方显式指定。
+DEFAULT_SKIP_PATHS = ()
 
 # 生成列表页时要跳过的名字（任何层级）：隐藏项与依赖/构建目录
 SKIP_NAMES = {".git", "node_modules"}

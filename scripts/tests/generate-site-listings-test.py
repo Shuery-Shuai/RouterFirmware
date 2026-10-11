@@ -75,6 +75,33 @@ class SiteListingFormatTests(unittest.TestCase):
                 generated_html,
             )
 
+    def test_nested_readmes_generate_their_own_listing_pages_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            public_dir = Path(temp_dir)
+            readmes = {
+                "assets/manual": "Manual directory README",
+                "assets/site": "Site assets README",
+            }
+            for relative_dir, content in readmes.items():
+                readme_path = public_dir / relative_dir / "README.md"
+                readme_path.parent.mkdir(parents=True)
+                readme_path.write_text(content, encoding="utf-8")
+
+            generate_site_listings.generate_tree(
+                public_dir,
+                dry_run=False,
+                quiet=True,
+                skip_paths=generate_site_listings.DEFAULT_SKIP_PATHS,
+                landing_paths=(),
+            )
+
+            for relative_dir, content in readmes.items():
+                generated_html = (
+                    public_dir / relative_dir / "index.html"
+                ).read_text(encoding="utf-8")
+                self.assertIn('data-readme-src="./README.md"', generated_html)
+                self.assertIn(content, generated_html)
+
 
 if __name__ == "__main__":
     unittest.main()
