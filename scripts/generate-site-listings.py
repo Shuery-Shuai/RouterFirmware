@@ -380,6 +380,47 @@ def breadcrumb(rel_dir: str) -> str:
     return "\n/\n".join(crumbs)
 
 
+def entry_icon(name: str, is_dir: bool) -> str:
+    """为不同类型的目录和文件返回更细的图标分类。"""
+    if is_dir:
+        return "📁"
+    lower = name.lower()
+
+    if lower.endswith((".img", ".bin", ".raw", ".itb", ".ubi", ".ubifs", ".squashfs", ".iso")):
+        return "💿"
+    if lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp")):
+        return "🖼️"
+    if lower.endswith((".mp3", ".wav", ".flac", ".ogg", ".aac", ".m4a")):
+        return "🎵"
+    if lower.endswith((".mp4", ".mkv", ".mov", ".avi", ".webm")):
+        return "🎬"
+    if lower.endswith((".tar", ".tar.gz", ".tgz", ".tar.xz", ".tar.bz2", ".gz", ".xz", ".bz2",
+                       ".zip", ".7z", ".rar", ".apk", ".ipk")):
+        return "🗜️"
+    if lower.endswith((".sh", ".bash", ".zsh", ".py", ".pl", ".rb", ".lua", ".js", ".ts",
+                       ".jsx", ".tsx", ".go", ".rs", ".c", ".cc", ".cpp", ".h", ".java",
+                       ".php", ".cs", ".swift", ".kt")):
+        return "🧩"
+    if lower.endswith((".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".config",
+                       ".xml", ".properties")):
+        return "⚙️"
+    if lower.endswith((".pem", ".crt", ".cer", ".key", ".pub", ".asc", ".gpg", ".sig")):
+        return "🔐"
+    if lower.endswith((".sha256", ".sha256sum", ".md5", ".sum", ".sha512")) or lower.startswith("sha256"):
+        return "✅"
+    if lower.endswith((".patch", ".diff")):
+        return "🩹"
+    if lower.endswith((".md", ".txt", ".rst", ".log")):
+        return "📝"
+    if lower.endswith((".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")):
+        return "📑"
+    if lower.endswith((".woff", ".woff2", ".ttf", ".otf")):
+        return "🔤"
+    if lower.endswith((".sqlite", ".db", ".sqlite3")):
+        return "🗃️"
+    return "📄"
+
+
 def table_row(name: str, is_dir: bool, size: int, mtime: float, digest: str | None,
               display: str | None = None) -> str:
     """一行表格数据（官方 class 约定：n/s/d/sh）。"""
@@ -388,8 +429,9 @@ def table_row(name: str, is_dir: bool, size: int, mtime: float, digest: str | No
     text = html.escape(label, quote=False) + ("/" if is_dir else "")
     size_cell = "-" if is_dir else fmt_size(size)
     hash_cell = "-" if (is_dir or not digest) else digest
+    icon = entry_icon(name, is_dir)
     return (
-        f'<tr><td class="n"><a href="{href}">{text}</a></td>'
+        f'<tr><td class="n"><a href="{href}"><span class="entry-icon" aria-hidden="true">{icon}</span>{text}</a></td>'
         f'<td class="sh">{hash_cell}</td>'
         f'<td class="s">{size_cell}</td>'
         f'<td class="d">{fmt_date(mtime)}</td></tr>'
@@ -401,8 +443,9 @@ def plain_row(name: str, is_dir: bool, size: int, mtime: float) -> str:
     href = html.escape(name + ("/" if is_dir else ""), quote=True)
     text = html.escape(name, quote=False) + ("/" if is_dir else "")
     size_cell = "-" if is_dir else fmt_size(size)
+    icon = entry_icon(name, is_dir)
     return (
-        f'<tr><td class="n"><a href="{href}">{text}</a></td>'
+        f'<tr><td class="n"><a href="{href}"><span class="entry-icon" aria-hidden="true">{icon}</span>{text}</a></td>'
         f'<td class="s">{size_cell}</td>'
         f'<td class="d">{fmt_date(mtime)}</td></tr>'
     )

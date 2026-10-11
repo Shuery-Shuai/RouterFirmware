@@ -12,3 +12,22 @@
 /* 语言切换图标「文A」：字形实现（无外部资源），A 略小并轻微上移，读起来像翻译图标 */
 .site-lang .lang-icon { font-size: 1.05em; line-height: 1; letter-spacing: -0.02em; }
 .site-lang .lang-icon .lang-a { font-size: 0.82em; vertical-align: 0.06em; margin-left: 0.05em; }
+
+/* 文件列表中的项图标 */
+.entry-icon {
+  display: inline-block;
+  width: 1.2em;
+  margin-right: 0.45em;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1;
+  font-size: 1.05em;
+  flex-shrink: 0;
+}
+
+td.n a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1em;
+}
+
