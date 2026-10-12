@@ -25,9 +25,13 @@
       "branch": "master",
       "downloads": "https://downloads.immortalwrt.org",
       "stable": "25.12.2",
-      "oldstable": null,
+      "oldstable": "24.10.6",
       "snapshots": true,
-      "archive": []
+      "archive": [],
+      "tracked_lines": [
+        "25.12",
+        "24.10"
+      ]
     },
     {
       "id": "openwrt",
@@ -36,9 +40,13 @@
       "branch": "main",
       "downloads": "https://downloads.openwrt.org",
       "stable": "25.12.5",
-      "oldstable": null,
+      "oldstable": "24.10.8",
       "snapshots": true,
-      "archive": []
+      "archive": [],
+      "tracked_lines": [
+        "25.12",
+        "24.10"
+      ]
     }
   ]
 }
