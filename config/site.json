@@ -39,7 +39,7 @@
       "repo": "https://github.com/openwrt/openwrt",
       "branch": "main",
       "downloads": "https://downloads.openwrt.org",
-      "stable": "25.12.5",
+      "stable": "25.12.6",
       "oldstable": "24.10.8",
       "snapshots": true,
       "archive": [],
